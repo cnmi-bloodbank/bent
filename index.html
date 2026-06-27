@@ -33,9 +33,9 @@
         <p>ใช้สำหรับประกาศว่ามีเลือดพร้อมให้ติดต่อ หรือกำลังต้องการเลือดระหว่างโรงพยาบาล โดยไม่เก็บข้อมูลผู้ป่วย ผู้บริจาค หรือเลขถุงเลือด</p>
       </div>
       <div class="how-it-works">
-        <div><b>1</b><span>สมัครและยืนยันอีเมล</span></div>
-        <div><b>2</b><span>รอผู้ดูแลอนุมัติบัญชี</span></div>
-        <div><b>3</b><span>เริ่มค้นหาและลงประกาศ</span></div>
+        <div><b>1</b><span>ส่งคำขอเปิดบัญชี</span></div>
+        <div><b>2</b><span>ผู้ดูแลตรวจสอบและอนุมัติ</span></div>
+        <div><b>3</b><span>ตั้งรหัสผ่านจากอีเมลแล้วเริ่มใช้งาน</span></div>
       </div>
       <p class="disclaimer-light">BENT ไม่ใช่ระบบจองเลือด และไม่ใช้แทนการตรวจสอบผลิตภัณฑ์ เอกสาร การขนส่ง หรือ SOP ของโรงพยาบาล</p>
     </div>
@@ -58,18 +58,41 @@
         </form>
 
         <form id="registerForm" class="auth-form hidden" autocomplete="on">
-          <div class="form-heading"><h2>สมัครใช้งาน BENT</h2><p>หลังยืนยันอีเมล ผู้ดูแลจะตรวจสอบและอนุมัติบัญชี</p></div>
+          <div class="form-heading"><h2>สมัครใช้งาน BENT</h2><p>ส่งคำขอก่อน โดยยังไม่ต้องตั้งรหัสผ่าน</p></div>
           <label>ชื่อ–นามสกุล<input id="registerName" type="text" required maxlength="120" placeholder="ชื่อผู้ใช้งานจริง"></label>
           <label>โรงพยาบาล<input id="registerHospital" type="text" required maxlength="180" placeholder="ชื่อโรงพยาบาลแบบเต็ม"></label>
           <label>เบอร์โทรติดต่อหน่วยงาน<input id="registerPhone" type="tel" required maxlength="30" placeholder="เช่น 02-xxx-xxxx ต่อ xxxx"></label>
           <label>อีเมล<input id="registerEmail" type="email" autocomplete="email" required placeholder="แนะนำอีเมลหน่วยงาน"></label>
-          <label>ตั้งรหัสผ่าน
-            <span class="password-wrap"><input id="registerPassword" type="password" autocomplete="new-password" required minlength="8"><button type="button" class="show-password" data-target="registerPassword">แสดง</button></span>
-          </label>
+          <label>ตำแหน่ง/หน่วยงาน (ถ้ามี)<input id="registerPosition" type="text" maxlength="160" placeholder="เช่น นักเทคนิคการแพทย์ ห้องคลังเลือด"></label>
+          <input id="registerWebsite" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" class="honeypot" value="">
           <label class="check-row"><input id="registerAgreement" type="checkbox" required><span>ยืนยันว่าจะไม่บันทึกข้อมูลผู้ป่วย ผู้บริจาค เลขถุงเลือด Barcode หรือ QR Code ลงในระบบ</span></label>
-          <button type="submit" class="btn btn-primary btn-block">สมัครใช้งาน</button>
+          <button type="submit" class="btn btn-primary btn-block">ส่งคำขอเปิดบัญชี</button>
         </form>
       </div>
+    </div>
+  </section>
+
+
+  <section id="passwordSetupScreen" class="status-page hidden">
+    <div class="status-card password-setup-card">
+      <img src="assets/icons/icon-192.png" alt="BENT" class="status-logo">
+      <span class="badge badge-pending">ตั้งรหัสผ่าน BENT</span>
+      <h1>กำหนดรหัสผ่านของคุณ</h1>
+      <p id="setupTokenStatus">กำลังตรวจสอบลิงก์...</p>
+      <form id="passwordSetupForm" class="auth-form hidden" autocomplete="off">
+        <label>รหัสผ่านใหม่
+          <span class="password-wrap"><input id="setupPassword" type="password" autocomplete="new-password" required minlength="10"><button type="button" class="show-password" data-target="setupPassword">แสดง</button></span>
+        </label>
+        <label>ยืนยันรหัสผ่านใหม่
+          <span class="password-wrap"><input id="setupPasswordConfirm" type="password" autocomplete="new-password" required minlength="10"><button type="button" class="show-password" data-target="setupPasswordConfirm">แสดง</button></span>
+        </label>
+        <div class="info-box">
+          <b>ลิงก์นี้ไม่มีการหมดอายุตามเวลา</b>
+          <p>ใช้ได้หนึ่งครั้ง และลิงก์เดิมจะถูกยกเลิกเมื่อมีการออกลิงก์ใหม่หรือผู้ดูแลเพิกถอน</p>
+        </div>
+        <button id="saveSetupPasswordBtn" type="submit" class="btn btn-primary btn-block">บันทึกรหัสผ่าน</button>
+      </form>
+      <button id="backToLoginBtn" type="button" class="btn btn-ghost hidden">กลับหน้าเข้าสู่ระบบ</button>
     </div>
   </section>
 
@@ -81,7 +104,7 @@
       <p id="pendingMessage">ผู้ดูแลระบบจะตรวจสอบโรงพยาบาลและข้อมูลผู้สมัครก่อนเปิดใช้งาน</p>
       <div class="info-box">
         <b>ขั้นตอนที่ต้องทำ</b>
-        <p>ตรวจสอบว่าได้กดยืนยันอีเมลจาก Supabase แล้ว จากนั้นรอ System Admin อนุมัติบัญชีและกำหนดโรงพยาบาล</p>
+        <p>บัญชีเดิมที่ยังรออนุมัติให้ติดต่อ System Admin ส่วนผู้สมัครใหม่จะได้รับอีเมลตั้งรหัสผ่านหลังอนุมัติ</p>
       </div>
       <button id="refreshProfileBtn" type="button" class="btn btn-primary">ตรวจสอบสถานะอีกครั้ง</button>
       <button id="pendingLogoutBtn" type="button" class="btn btn-ghost">ออกจากระบบ</button>

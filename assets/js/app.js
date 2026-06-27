@@ -17,13 +17,14 @@
     editingAnnouncement: null,
     compressedImage: null,
     installPrompt: null,
-    adminTab: 'users',
+    adminTab: 'requests',
     filters: {},
-    initialized: false
+    initialized: false,
+    setupToken: null
   };
 
   const screens = {
-    setup: $('#setupScreen'), auth: $('#authScreen'), pending: $('#pendingScreen'), app: $('#appShell')
+    setup: $('#setupScreen'), auth: $('#authScreen'), passwordSetup: $('#passwordSetupScreen'), pending: $('#pendingScreen'), app: $('#appShell')
   };
   const main = $('#mainContent');
 
@@ -63,7 +64,9 @@
   function configIsValid() {
     const c = window.BENT_CONFIG || {};
     return c.SUPABASE_URL?.startsWith('https://') && !c.SUPABASE_URL.includes('YOUR-PROJECT')
-      && c.SUPABASE_PUBLISHABLE_KEY && !c.SUPABASE_PUBLISHABLE_KEY.includes('YOUR_');
+      && c.SUPABASE_PUBLISHABLE_KEY && !c.SUPABASE_PUBLISHABLE_KEY.includes('YOUR_')
+      && c.APPS_SCRIPT_WEB_APP_URL?.startsWith('https://')
+      && !c.APPS_SCRIPT_WEB_APP_URL.includes('YOUR_DEPLOYMENT_ID');
   }
 
   function renderSetupScreen() {
@@ -99,13 +102,16 @@
       { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
     );
 
-    state.supabase.auth.onAuthStateChange(async (event, session) => {
+    state.setupToken = new URLSearchParams(location.search).get('setup');
+    if (state.setupToken) {
+      showScreen('passwordSetup');
+      await inspectPasswordSetupToken();
+      state.initialized = true;
+      return;
+    }
+
+    state.supabase.auth.onAuthStateChange(async (_event, session) => {
       state.session = session;
-      if (event === 'PASSWORD_RECOVERY') {
-        showScreen('auth');
-        openPasswordResetModal();
-        return;
-      }
       await routeSession();
     });
 
@@ -114,6 +120,53 @@
     state.session = data?.session || null;
     await routeSession();
     state.initialized = true;
+  }
+
+  async function inspectPasswordSetupToken() {
+    const status = $('#setupTokenStatus');
+    const form = $('#passwordSetupForm');
+    const back = $('#backToLoginBtn');
+    try {
+      const data = await I.call({ action: 'check_setup_token', setup_token: state.setupToken });
+      status.textContent = `ลิงก์พร้อมใช้งานสำหรับ ${data.masked_email || 'บัญชีนี้'} กรุณาตั้งรหัสผ่านอย่างน้อย 10 ตัวอักษร`;
+      form.classList.remove('hidden');
+      back.classList.add('hidden');
+    } catch (error) {
+      status.textContent = U.friendlyError(error);
+      form.classList.add('hidden');
+      back.classList.remove('hidden');
+    }
+  }
+
+  async function saveSetupPassword(event) {
+    event.preventDefault();
+    const button = $('#saveSetupPasswordBtn');
+    const password = $('#setupPassword').value;
+    const confirm = $('#setupPasswordConfirm').value;
+    try {
+      if (password.length < 10) throw new Error('PASSWORD_TOO_SHORT');
+      if (password !== confirm) throw new Error('PASSWORDS_NOT_MATCH');
+      setButtonBusy(button, true, 'กำลังบันทึก...');
+      await I.call({ action: 'set_password', setup_token: state.setupToken, new_password: password });
+      try { await state.supabase.auth.signOut(); } catch (_) {}
+      const cleanUrl = new URL(location.href);
+      cleanUrl.searchParams.delete('setup');
+      history.replaceState({}, '', cleanUrl.toString());
+      state.setupToken = null;
+      event.target.reset();
+      showScreen('auth');
+      openModal('ตั้งรหัสผ่านสำเร็จ', 'บัญชีพร้อมใช้งานแล้ว', `<p>เข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่เพิ่งกำหนดได้ทันที</p><div class="modal-actions"><button class="btn btn-primary" data-close-modal>เข้าสู่ระบบ</button></div>`);
+    } catch (error) {
+      toast('ตั้งรหัสผ่านไม่สำเร็จ', U.friendlyError(error), 'error');
+    } finally {
+      setButtonBusy(button, false);
+    }
+  }
+
+  function returnToLogin() {
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('setup');
+    location.href = cleanUrl.toString();
   }
 
   async function routeSession() {
@@ -796,7 +849,7 @@
     main.innerHTML = `
       <div class="page-stack">
         <div class="admin-tabs">
-          ${[['users','ผู้ใช้งาน'],['hospitals','โรงพยาบาล'],['announcements','ประกาศทั้งหมด'],['components','Component'],['antigens','Antigen'],['sources','แหล่งที่มา'],['stats','สถิติ Pilot'],['images','จัดการรูป'],['audit','Audit Log']].map(([key,label]) => `<button class="admin-tab ${state.adminTab === key ? 'active' : ''}" data-admin-tab="${key}">${label}</button>`).join('')}
+          ${[['requests','คำขอเปิดบัญชี'],['users','ผู้ใช้งาน'],['hospitals','โรงพยาบาล'],['announcements','ประกาศทั้งหมด'],['components','Component'],['antigens','Antigen'],['sources','แหล่งที่มา'],['stats','สถิติ Pilot'],['images','จัดการรูป'],['audit','Audit Log']].map(([key,label]) => `<button class="admin-tab ${state.adminTab === key ? 'active' : ''}" data-admin-tab="${key}">${label}</button>`).join('')}
         </div>
         <div id="adminContent"><div class="loading-block"><div class="spinner"></div></div></div>
       </div>`;
@@ -809,7 +862,8 @@
     const host = $('#adminContent'); if (!host) return;
     host.innerHTML = '<div class="loading-block"><div class="spinner"></div></div>';
     try {
-      if (tab === 'users') await adminUsers(host);
+      if (tab === 'requests') await adminAccountRequests(host);
+      else if (tab === 'users') await adminUsers(host);
       else if (tab === 'hospitals') adminHospitals(host);
       else if (tab === 'announcements') adminAnnouncements(host);
       else if (['components','antigens','sources'].includes(tab)) adminMaster(host, tab);
@@ -823,6 +877,75 @@
     const rows = state.announcements;
     const counts = ['open','coordinating','closed','cancelled','expired'].map(status => ({ status, total: rows.filter(x => x.status === status).length }));
     host.innerHTML = `<div class="page-stack"><section class="stat-grid">${counts.map(x => statCard(U.statusLabel[x.status], x.total, 'รายการ')).join('')}</section><section class="panel"><div class="panel-header"><div><h2>ประกาศทุกโรงพยาบาล ${rows.length} รายการ</h2><p>System Admin เห็นรายการเปิดและประวัติที่ปิดแล้วทั้งหมด</p></div></div><div class="panel-body"><div class="announcement-grid">${rows.map(renderAnnouncementCard).join('') || emptyState('ยังไม่มีประกาศ','')}</div></div></section></div>`;
+  }
+
+  async function adminAccountRequests(host) {
+    const { data, error } = await state.supabase.from('bent_account_requests').select('*').order('requested_at', { ascending: false });
+    if (error) throw error;
+    const actions = request => {
+      if (request.status === 'approved' && request.auth_user_id) {
+        return `<button class="btn btn-soft" data-action="admin-resend-request-link" data-request="${request.id}">ส่งลิงก์ใหม่</button>`;
+      }
+      return `<button class="btn btn-primary" data-action="admin-review-request" data-request="${request.id}">ตรวจสอบ</button>`;
+    };
+    const row = request => `<tr><td><b>${U.esc(request.full_name)}</b><br><small>${U.esc(request.email)}</small></td><td>${U.esc(request.hospital_name)}</td><td>${U.esc(request.phone)}</td><td><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span><br><small>${U.fmtDateTime(request.requested_at)}</small></td><td>${actions(request)}</td></tr>`;
+    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>คำขอเปิดบัญชี ${data.length} รายการ</h2><p>ตรวจสอบข้อมูลก่อนสร้าง Supabase Auth User และส่งลิงก์ตั้งรหัสผ่านผ่าน Google Apps Script</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้สมัคร</th><th>โรงพยาบาล</th><th>โทรศัพท์</th><th>สถานะ</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(request => `<div class="mobile-data-card"><b>${U.esc(request.full_name)}</b><span>${U.esc(request.email)}</span><span>${U.esc(request.hospital_name)} · ${U.esc(request.phone)}</span><div class="inline-actions"><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span>${actions(request)}</div></div>`).join('')}</div>` : emptyState('ยังไม่มีคำขอเปิดบัญชี','คำขอใหม่จะปรากฏที่หน้านี้')}</div></section>`;
+    host.dataset.requests = JSON.stringify(data);
+  }
+
+  function openAccountRequest(request) {
+    if (!request) return;
+    openModal('ตรวจสอบคำขอเปิดบัญชี', request.email, `
+      <form id="accountRequestForm">
+        <label>ชื่อ–นามสกุล<input id="requestFullName" value="${U.esc(request.full_name || '')}" required maxlength="120"></label>
+        <label>เบอร์โทร<input id="requestPhone" value="${U.esc(request.phone || '')}" required maxlength="30"></label>
+        <label>โรงพยาบาลที่ผู้สมัครแจ้ง<input value="${U.esc(request.hospital_name || '')}" readonly></label>
+        <label>ตำแหน่ง/หน่วยงาน<input value="${U.esc(request.position_title || '')}" readonly></label>
+        <label>กำหนดโรงพยาบาลในระบบ<select id="requestHospital" required><option value="">เลือกโรงพยาบาล</option>${state.masters.hospitals.filter(h => h.is_active).map(h => `<option value="${h.id}">${U.esc(h.name)}</option>`).join('')}</select></label>
+        <label>Role<select id="requestRole"><option value="user">User</option><option value="system_admin">System Admin</option></select></label>
+        <label>หมายเหตุของผู้ดูแล<textarea id="requestAdminNote" maxlength="500">${U.esc(request.admin_note || '')}</textarea></label>
+        <div class="notice warning"><b>เมื่อกดอนุมัติ</b><p>ระบบจะสร้างบัญชีแบบยืนยันอีเมลแล้ว แต่ยังไม่มีรหัสผ่าน จากนั้นส่งลิงก์ BENT ที่ไม่มีการหมดอายุตามเวลาให้ผู้สมัครตั้งรหัสผ่านเอง</p></div>
+        <div class="modal-actions">
+          <button id="rejectRequestBtn" type="button" class="btn btn-danger">ไม่อนุมัติ</button>
+          <button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button>
+          <button id="approveRequestBtn" type="submit" class="btn btn-primary">อนุมัติและส่งลิงก์</button>
+        </div>
+      </form>`);
+    $('#accountRequestForm').addEventListener('submit', async event => {
+      event.preventDefault(); const btn = $('#approveRequestBtn');
+      try {
+        const hospitalId = $('#requestHospital').value;
+        if (!hospitalId) throw new Error('กรุณาเลือกโรงพยาบาล');
+        setButtonBusy(btn, true, 'กำลังสร้างบัญชี...');
+        const result = await I.call({
+          action: 'approve_account_request', access_token: state.session.access_token,
+          request_id: request.id, hospital_id: hospitalId, role: $('#requestRole').value,
+          full_name: $('#requestFullName').value.trim(), phone: $('#requestPhone').value.trim(),
+          admin_note: $('#requestAdminNote').value.trim()
+        });
+        closeModal();
+        toast('อนุมัติบัญชีแล้ว', result.email_sent ? 'ส่งลิงก์ตั้งรหัสผ่านแล้ว' : 'สร้างบัญชีแล้ว แต่ส่งอีเมลไม่สำเร็จ ให้กดส่งลิงก์ใหม่', result.email_sent ? 'success' : 'error', 8000);
+        await loadAdminTab('requests');
+      } catch (error) { toast('อนุมัติไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(btn, false); }
+    });
+    $('#rejectRequestBtn').addEventListener('click', async () => {
+      const btn = $('#rejectRequestBtn');
+      try {
+        setButtonBusy(btn, true, 'กำลังบันทึก...');
+        await I.call({ action: 'reject_account_request', access_token: state.session.access_token, request_id: request.id, admin_note: $('#requestAdminNote').value.trim() });
+        closeModal(); toast('บันทึกว่าไม่อนุมัติแล้ว', '', 'success'); await loadAdminTab('requests');
+      } catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(btn, false); }
+    });
+  }
+
+  async function resendRequestLink(request) {
+    try {
+      const result = await I.call({ action: 'admin_send_password_link', access_token: state.session.access_token, request_id: request.id });
+      toast('ออกลิงก์ใหม่แล้ว', result.email_sent ? 'ส่งอีเมลแล้ว และลิงก์เดิมถูกยกเลิก' : 'สร้างลิงก์แล้ว แต่ส่งอีเมลไม่สำเร็จ', result.email_sent ? 'success' : 'error', 8000);
+      await loadAdminTab('requests');
+    } catch (error) { toast('ส่งลิงก์ไม่สำเร็จ', U.friendlyError(error), 'error'); }
   }
 
   async function adminUsers(host) {
@@ -842,8 +965,17 @@
         <label>สถานะ<select id="adminUserStatus">${['pending','active','rejected','suspended','inactive'].map(x => `<option value="${x}" ${x === user.status ? 'selected' : ''}>${U.esc(U.statusLabel[x])}</option>`).join('')}</select></label>
         <label>Role<select id="adminUserRole"><option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option><option value="system_admin" ${user.role === 'system_admin' ? 'selected' : ''}>System Admin</option></select></label>
         <div class="notice warning"><b>ข้อควรระวัง</b><p>บัญชี Active ต้องกำหนดโรงพยาบาล และการแต่งตั้ง System Admin จะถูกบันทึกใน Audit Log</p></div>
-        <div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="adminSaveUserBtn" class="btn btn-primary" type="submit">บันทึก</button></div>
+        <div class="modal-actions"><button id="adminSendPasswordLinkBtn" type="button" class="btn btn-soft">ส่งลิงก์ตั้งรหัสผ่านใหม่</button><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="adminSaveUserBtn" class="btn btn-primary" type="submit">บันทึก</button></div>
       </form>`);
+    $('#adminSendPasswordLinkBtn').addEventListener('click', async () => {
+      const btn = $('#adminSendPasswordLinkBtn');
+      try {
+        setButtonBusy(btn, true, 'กำลังส่ง...');
+        const result = await I.call({ action: 'admin_send_password_link', access_token: state.session.access_token, user_id: user.id });
+        toast('ออกลิงก์ใหม่แล้ว', result.email_sent ? 'ส่งอีเมลแล้ว และลิงก์เดิมถูกยกเลิก' : 'สร้างลิงก์แล้ว แต่ส่งอีเมลไม่สำเร็จ', result.email_sent ? 'success' : 'error', 8000);
+      } catch (error) { toast('ส่งลิงก์ไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(btn, false); }
+    });
     $('#adminUserForm').addEventListener('submit', async event => {
       event.preventDefault(); const btn = $('#adminSaveUserBtn');
       try {
@@ -985,20 +1117,6 @@
     openModal('ติดตั้ง BENT บนหน้าจอหลัก', '', isIos ? `<ol><li>เปิดเว็บไซต์ BENT ด้วย Safari</li><li>แตะปุ่ม Share</li><li>เลือก “เพิ่มไปยังหน้าจอโฮม”</li><li>แตะ “เพิ่ม”</li></ol>` : `<ol><li>เปิดเว็บไซต์ BENT ด้วย Chrome</li><li>แตะเมนูจุดสามจุด</li><li>เลือก “ติดตั้งแอป” หรือ “เพิ่มลงในหน้าจอหลัก”</li><li>กดยืนยัน</li></ol><p>หากยังไม่พบเมนู ให้เปิดเว็บไซต์ผ่าน HTTPS และโหลดหน้าใหม่หนึ่งครั้ง</p>`);
   }
 
-  function openPasswordResetModal() {
-    openModal('ตั้งรหัสผ่านใหม่', 'กรอกรหัสผ่านใหม่อย่างน้อย 8 ตัวอักษร', `<form id="newPasswordForm"><label>รหัสผ่านใหม่<input id="newPassword" type="password" minlength="8" required></label><label>ยืนยันรหัสผ่าน<input id="confirmNewPassword" type="password" minlength="8" required></label><div class="modal-actions"><button id="saveNewPassword" class="btn btn-primary">บันทึกรหัสผ่านใหม่</button></div></form>`);
-    $('#newPasswordForm').addEventListener('submit', async event => {
-      event.preventDefault(); const btn = $('#saveNewPassword');
-      try {
-        const a = $('#newPassword').value, b = $('#confirmNewPassword').value;
-        if (a.length < 8 || a !== b) throw new Error('รหัสผ่านต้องอย่างน้อย 8 ตัวอักษรและตรงกันทั้งสองช่อง');
-        setButtonBusy(btn, true);
-        const { error } = await state.supabase.auth.updateUser({ password:a }); if (error) throw error;
-        closeModal(); toast('เปลี่ยนรหัสผ่านแล้ว', 'เข้าสู่ระบบต่อได้ทันที', 'success');
-      } catch (error) { toast('เปลี่ยนรหัสผ่านไม่สำเร็จ', U.friendlyError(error), 'error'); }
-      finally { setButtonBusy(btn, false); }
-    });
-  }
 
   function bindStaticEvents() {
     $$('.auth-tab').forEach(btn => btn.addEventListener('click', () => {
@@ -1011,6 +1129,8 @@
     }));
     $('#loginForm').addEventListener('submit', login);
     $('#registerForm').addEventListener('submit', register);
+    $('#passwordSetupForm').addEventListener('submit', saveSetupPassword);
+    $('#backToLoginBtn').addEventListener('click', returnToLogin);
     $('#forgotPasswordBtn').addEventListener('click', forgotPassword);
     $('#logoutBtn').addEventListener('click', logout);
     $('#pendingLogoutBtn').addEventListener('click', logout);
@@ -1041,15 +1161,19 @@
   async function register(event) {
     event.preventDefault(); const btn = event.submitter;
     try {
-      setButtonBusy(btn, true, 'กำลังสมัคร...');
-      const { error } = await state.supabase.auth.signUp({
-        email: $('#registerEmail').value.trim(), password: $('#registerPassword').value,
-        options: { emailRedirectTo: location.href.split('#')[0], data: { full_name: $('#registerName').value.trim(), phone: $('#registerPhone').value.trim(), hospital_name: $('#registerHospital').value.trim() } }
+      setButtonBusy(btn, true, 'กำลังส่งคำขอ...');
+      await I.call({
+        action: 'submit_account_request',
+        full_name: $('#registerName').value.trim(),
+        hospital_name: $('#registerHospital').value.trim(),
+        phone: $('#registerPhone').value.trim(),
+        email: $('#registerEmail').value.trim(),
+        position_title: $('#registerPosition').value.trim(),
+        website: $('#registerWebsite').value
       });
-      if (error) throw error;
-      openModal('สมัครใช้งานแล้ว', 'เหลืออีก 2 ขั้นตอน', `<ol><li>เปิดอีเมลที่ใช้สมัคร แล้วกดลิงก์ยืนยัน</li><li>รอ System Admin ตรวจสอบและอนุมัติบัญชี</li></ol><div class="notice warning"><b>ยังเข้าใช้งานข้อมูลภายในไม่ได้</b><p>จนกว่าจะยืนยันอีเมลและสถานะบัญชีเป็น Active</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>รับทราบ</button></div>`);
+      openModal('ส่งคำขอแล้ว', 'ยังไม่มีการสร้างบัญชีในขั้นตอนนี้', `<ol><li>System Admin ตรวจสอบข้อมูลและโรงพยาบาล</li><li>เมื่ออนุมัติ ระบบจะส่งลิงก์ตั้งรหัสผ่านไปยังอีเมลที่ระบุ</li><li>เปิดลิงก์ ตั้งรหัสผ่าน แล้วเข้าสู่ระบบ</li></ol><div class="notice warning"><b>ลิงก์ไม่มีการหมดอายุตามเวลา</b><p>ลิงก์ใช้ได้หนึ่งครั้ง และลิงก์เดิมจะถูกยกเลิกเมื่อมีการออกลิงก์ใหม่</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>รับทราบ</button></div>`);
       event.target.reset();
-    } catch (error) { toast('สมัครไม่สำเร็จ', U.friendlyError(error), 'error'); }
+    } catch (error) { toast('ส่งคำขอไม่สำเร็จ', U.friendlyError(error), 'error'); }
     finally { setButtonBusy(btn, false); }
   }
 
@@ -1057,9 +1181,9 @@
     const email = $('#loginEmail').value.trim();
     if (!email) { toast('กรุณากรอกอีเมลก่อน', 'ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปยังอีเมลนี้', 'error'); return; }
     try {
-      const { error } = await state.supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href.split('#')[0] }); if (error) throw error;
-      toast('ส่งอีเมลแล้ว', 'เปิดลิงก์ในอีเมลเพื่อตั้งรหัสผ่านใหม่', 'success');
-    } catch (error) { toast('ส่งอีเมลไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      await I.call({ action: 'request_password_reset', email });
+      toast('รับคำขอแล้ว', 'หากอีเมลนี้เป็นบัญชีที่ใช้งาน ระบบจะส่งลิงก์ตั้งรหัสผ่านให้', 'success', 7000);
+    } catch (error) { toast('ส่งคำขอไม่สำเร็จ', U.friendlyError(error), 'error'); }
   }
 
   async function logout() {
@@ -1086,6 +1210,12 @@
     else if (action === 'cancel' && item) confirmCancel(item);
     else if (action === 'copy-phone') { await navigator.clipboard.writeText(event.target.closest('[data-phone]').dataset.phone); toast('คัดลอกเบอร์แล้ว','','success'); }
     else if (action === 'install-pwa') openInstallHelp();
+    else if (action === 'admin-review-request') {
+      const requests = JSON.parse($('#adminContent').dataset.requests || '[]'); openAccountRequest(requests.find(x => x.id === event.target.closest('[data-request]').dataset.request));
+    }
+    else if (action === 'admin-resend-request-link') {
+      const requests = JSON.parse($('#adminContent').dataset.requests || '[]'); await resendRequestLink(requests.find(x => x.id === event.target.closest('[data-request]').dataset.request));
+    }
     else if (action === 'admin-edit-user') {
       const users = JSON.parse($('#adminContent').dataset.users || '[]'); openAdminUser(users.find(x => x.id === event.target.closest('[data-user]').dataset.user));
     }

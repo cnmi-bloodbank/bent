@@ -83,9 +83,9 @@
       body: JSON.stringify(payload),
       redirect: 'follow'
     });
-    if (!response.ok) throw new Error(`Image service HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`BENT gateway HTTP ${response.status}`);
     const data = await response.json();
-    if (!data.ok) throw new Error(data.error || 'Image service failed');
+    if (!data.ok) throw new Error(data.error || 'BENT gateway failed');
     return data;
   }
 
@@ -105,5 +105,5 @@
     return callAppsScript({ action: 'delete', access_token: accessToken, announcement_id: announcementId });
   }
 
-  window.BENT_IMAGE = { compressImage, upload, read, remove, allowedTypes: ALLOWED };
+  window.BENT_IMAGE = { compressImage, upload, read, remove, call: callAppsScript, allowedTypes: ALLOWED };
 })();
