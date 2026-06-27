@@ -900,8 +900,13 @@
       }
       return `<button class="btn btn-primary" data-action="admin-review-request" data-request="${request.id}">ตรวจสอบ</button>`;
     };
-    const row = request => `<tr><td><b>${U.esc(request.full_name)}</b><br><small>${U.esc(request.email)}</small></td><td>${U.esc(request.hospital_name)}</td><td>${U.esc(request.phone)}</td><td><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span><br><small>${U.fmtDateTime(request.requested_at)}</small></td><td>${actions(request)}</td></tr>`;
-    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>คำขอเปิดบัญชี ${data.length} รายการ</h2><p>ตรวจสอบข้อมูลก่อนสร้างบัญชีผู้ใช้และส่งลิงก์ตั้งรหัสผ่านทางอีเมล</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้สมัคร</th><th>โรงพยาบาล</th><th>โทรศัพท์</th><th>สถานะ</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(request => `<div class="mobile-data-card"><b>${U.esc(request.full_name)}</b><span>${U.esc(request.email)}</span><span>${U.esc(request.hospital_name)} · ${U.esc(request.phone)}</span><div class="inline-actions"><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span>${actions(request)}</div></div>`).join('')}</div>` : emptyState('ยังไม่มีคำขอเปิดบัญชี','คำขอใหม่จะปรากฏที่หน้านี้')}</div></section>`;
+    const mailState = request => {
+      if (request.email_sent_at) return `<span class="badge badge-active">ส่งแล้ว</span><br><small>${U.fmtDateTime(request.email_sent_at)}</small>`;
+      if (request.email_last_error) return `<span class="badge badge-rejected">ยังไม่ส่ง</span><br><small>${U.esc(U.friendlyError(request.email_last_error))}</small>`;
+      return '<span class="badge badge-pending">ยังไม่ส่ง</span>';
+    };
+    const row = request => `<tr><td><b>${U.esc(request.full_name)}</b><br><small>${U.esc(request.email)}</small></td><td>${U.esc(request.hospital_name)}</td><td>${U.esc(request.phone)}</td><td><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span><br><small>${U.fmtDateTime(request.requested_at)}</small></td><td>${mailState(request)}</td><td>${actions(request)}</td></tr>`;
+    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>คำขอเปิดบัญชี ${data.length} รายการ</h2><p>ตรวจสอบข้อมูลก่อนสร้างบัญชีผู้ใช้และส่งลิงก์ตั้งรหัสผ่านทางอีเมล</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้สมัคร</th><th>โรงพยาบาล</th><th>โทรศัพท์</th><th>สถานะ</th><th>อีเมลตั้งรหัสผ่าน</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(request => `<div class="mobile-data-card"><b>${U.esc(request.full_name)}</b><span>${U.esc(request.email)}</span><span>${U.esc(request.hospital_name)} · ${U.esc(request.phone)}</span><div><small>อีเมลตั้งรหัสผ่าน</small>${mailState(request)}</div><div class="inline-actions"><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span>${actions(request)}</div></div>`).join('')}</div>` : emptyState('ยังไม่มีคำขอเปิดบัญชี','คำขอใหม่จะปรากฏที่หน้านี้')}</div></section>`;
     host.dataset.requests = JSON.stringify(data);
   }
 
@@ -936,7 +941,10 @@
           admin_note: $('#requestAdminNote').value.trim()
         });
         closeModal();
-        toast('อนุมัติบัญชีแล้ว', result.email_sent ? 'ส่งลิงก์ตั้งรหัสผ่านแล้ว' : 'สร้างบัญชีแล้ว แต่ส่งอีเมลไม่สำเร็จ ให้กดส่งลิงก์ใหม่', result.email_sent ? 'success' : 'error', 8000);
+        const deliveryMessage = result.email_sent
+          ? 'ส่งลิงก์ตั้งรหัสผ่านแล้ว'
+          : `สร้างบัญชีแล้ว แต่อีเมลยังไม่ถูกส่ง: ${U.friendlyError(result.email_error || 'ไม่ทราบสาเหตุ')} หลังแก้ไขแล้วให้กด “ส่งลิงก์ใหม่”`;
+        toast('อนุมัติบัญชีแล้ว', deliveryMessage, result.email_sent ? 'success' : 'error', 11000);
         await loadAdminTab('requests');
       } catch (error) { toast('อนุมัติไม่สำเร็จ', U.friendlyError(error), 'error'); }
       finally { setButtonBusy(btn, false); }
@@ -955,7 +963,7 @@
   async function resendRequestLink(request) {
     try {
       const result = await I.call({ action: 'admin_send_password_link', access_token: state.session.access_token, request_id: request.id });
-      toast('ออกลิงก์ใหม่แล้ว', result.email_sent ? 'ส่งอีเมลแล้ว และลิงก์เดิมถูกยกเลิก' : 'สร้างลิงก์แล้ว แต่ส่งอีเมลไม่สำเร็จ', result.email_sent ? 'success' : 'error', 8000);
+      toast('ออกลิงก์ใหม่แล้ว', result.email_sent ? 'ส่งอีเมลแล้ว และลิงก์เดิมถูกยกเลิก' : `ยังส่งอีเมลไม่สำเร็จ: ${U.friendlyError(result.email_error || 'ไม่ทราบสาเหตุ')}`, result.email_sent ? 'success' : 'error', 10000);
       await loadAdminTab('requests');
     } catch (error) { toast('ส่งลิงก์ไม่สำเร็จ', U.friendlyError(error), 'error'); }
   }
@@ -976,15 +984,16 @@
         <label>โรงพยาบาล<select id="adminUserHospital"><option value="">ยังไม่กำหนด</option>${state.masters.hospitals.map(h => `<option value="${h.id}" ${h.id === user.hospital_id ? 'selected' : ''}>${U.esc(h.name)}</option>`).join('')}</select></label>
         <label>สถานะ<select id="adminUserStatus">${['pending','active','rejected','suspended','inactive'].map(x => `<option value="${x}" ${x === user.status ? 'selected' : ''}>${U.esc(U.statusLabel[x])}</option>`).join('')}</select></label>
         <label>สิทธิ์การใช้งาน<select id="adminUserRole"><option value="user" ${user.role === 'user' ? 'selected' : ''}>ผู้ใช้งาน</option><option value="system_admin" ${user.role === 'system_admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option></select></label>
-        <div class="notice warning"><b>ข้อควรระวัง</b><p>บัญชีที่เปิดใช้งานต้องกำหนดโรงพยาบาล และการแต่งตั้งผู้ดูแลระบบ จะถูกบันทึกในประวัติการเปลี่ยนแปลง</p></div>
-        <div class="modal-actions"><button id="adminSendPasswordLinkBtn" type="button" class="btn btn-soft">ส่งลิงก์ตั้งรหัสผ่านใหม่</button><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="adminSaveUserBtn" class="btn btn-primary" type="submit">บันทึก</button></div>
+        <div class="notice warning"><b>ข้อควรระวัง</b><p>บัญชีที่เปิดใช้งานต้องกำหนดโรงพยาบาล หากบัญชีเคยสร้างประกาศหรือจัดการรูปแล้ว ระบบจะให้ปิดใช้งานแทนการลบ เพื่อรักษาประวัติการทำงาน</p></div>
+        <div class="modal-actions"><button id="adminDeleteUserBtn" type="button" class="btn btn-danger" ${user.id === state.profile?.id ? 'disabled' : ''}>ลบบัญชี</button><button id="adminSendPasswordLinkBtn" type="button" class="btn btn-soft">ส่งลิงก์ตั้งรหัสผ่านใหม่</button><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="adminSaveUserBtn" class="btn btn-primary" type="submit">บันทึก</button></div>
       </form>`);
+    $('#adminDeleteUserBtn').addEventListener('click', () => confirmDeleteUser(user));
     $('#adminSendPasswordLinkBtn').addEventListener('click', async () => {
       const btn = $('#adminSendPasswordLinkBtn');
       try {
         setButtonBusy(btn, true, 'กำลังส่ง...');
         const result = await I.call({ action: 'admin_send_password_link', access_token: state.session.access_token, user_id: user.id });
-        toast('ออกลิงก์ใหม่แล้ว', result.email_sent ? 'ส่งอีเมลแล้ว และลิงก์เดิมถูกยกเลิก' : 'สร้างลิงก์แล้ว แต่ส่งอีเมลไม่สำเร็จ', result.email_sent ? 'success' : 'error', 8000);
+        toast('ออกลิงก์ใหม่แล้ว', result.email_sent ? 'ส่งอีเมลแล้ว และลิงก์เดิมถูกยกเลิก' : `ยังส่งอีเมลไม่สำเร็จ: ${U.friendlyError(result.email_error || 'ไม่ทราบสาเหตุ')}`, result.email_sent ? 'success' : 'error', 10000);
       } catch (error) { toast('ส่งลิงก์ไม่สำเร็จ', U.friendlyError(error), 'error'); }
       finally { setButtonBusy(btn, false); }
     });
@@ -1002,6 +1011,31 @@
         closeModal(); toast('บันทึกผู้ใช้งานแล้ว', '', 'success'); await loadAdminTab('users');
       } catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
       finally { setButtonBusy(btn, false); }
+    });
+  }
+
+  function confirmDeleteUser(user) {
+    if (!user) return;
+    if (user.id === state.profile?.id) {
+      toast('ลบบัญชีนี้ไม่ได้', 'ไม่สามารถลบบัญชีที่กำลังเข้าสู่ระบบอยู่ได้', 'error');
+      return;
+    }
+    openModal('ยืนยันการลบบัญชี', user.email, `
+      <div class="notice danger"><b>ลบถาวรเฉพาะบัญชีที่ยังไม่มีประวัติการทำงาน</b><p>ระบบจะลบบัญชีเข้าสู่ระบบ โปรไฟล์ และคำขอเปิดบัญชีของ ${U.esc(user.full_name || user.email)} หากบัญชีเคยสร้างประกาศหรือจัดการรูป ระบบจะไม่ลบและจะแนะนำให้เปลี่ยนสถานะเป็น “ปิดใช้งาน” แทน</p></div>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="confirmDeleteUserBtn" type="button" class="btn btn-danger">ยืนยันลบบัญชี</button></div>`);
+    $('#confirmDeleteUserBtn').addEventListener('click', async () => {
+      const btn = $('#confirmDeleteUserBtn');
+      try {
+        setButtonBusy(btn, true, 'กำลังลบ...');
+        await I.call({ action: 'admin_delete_user', access_token: state.session.access_token, user_id: user.id });
+        closeModal();
+        toast('ลบบัญชีแล้ว', `${user.email} ถูกนำออกจากระบบแล้ว`, 'success');
+        await loadAdminTab('users');
+      } catch (error) {
+        toast('ลบบัญชีไม่สำเร็จ', U.friendlyError(error), 'error', 9000);
+      } finally {
+        setButtonBusy(btn, false);
+      }
     });
   }
 

@@ -27,7 +27,7 @@ label{display:block;font-weight:700;margin-bottom:15px;color:#29485f}input,selec
 
 .badge-approved{background:var(--green-100);color:var(--green-700)}
 
-/* v1.2.0: multi-select antigen search */
+/* v1.2.1: multi-select antigen search + account hotfix */
 .filter-antigen-field{grid-column:1/-1;border:1px solid var(--line);border-radius:14px;padding:12px;background:#f8fbfd}.filter-antigen-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.filter-antigen-heading b,.filter-antigen-heading span{display:block}.filter-antigen-heading b{font-size:14px}.filter-antigen-heading span{font-size:12px;color:var(--muted);margin-top:2px}.filter-antigen-heading small{white-space:nowrap;background:#eaf3f9;color:var(--blue-800);padding:5px 8px;border-radius:999px;font-weight:700}.filter-antigen-picker{display:grid;grid-template-columns:repeat(7,minmax(72px,1fr));gap:7px}.filter-antigen-picker .antigen-option span{padding:7px 4px;background:#fff}.filter-clear{grid-column:1/-1;justify-self:end}
 @media(max-width:1100px){.filter-antigen-picker{grid-template-columns:repeat(5,minmax(68px,1fr))}}
 @media(max-width:850px){.filter-antigen-picker{grid-template-columns:repeat(4,minmax(64px,1fr))}}
