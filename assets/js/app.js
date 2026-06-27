@@ -206,9 +206,9 @@
     };
     const msgMap = {
       pending: 'ผู้ดูแลระบบจะตรวจสอบโรงพยาบาลและข้อมูลผู้สมัครก่อนเปิดใช้งาน',
-      rejected: 'กรุณาติดต่อ System Admin เพื่อสอบถามข้อมูลที่ต้องแก้ไข',
-      suspended: 'กรุณาติดต่อ System Admin ของ BENT',
-      inactive: 'กรุณาติดต่อ System Admin หากต้องการเปิดใช้งานอีกครั้ง'
+      rejected: 'กรุณาติดต่อผู้ดูแลระบบเพื่อสอบถามข้อมูลที่ต้องแก้ไข',
+      suspended: 'กรุณาติดต่อผู้ดูแลระบบ BENT',
+      inactive: 'กรุณาติดต่อผู้ดูแลระบบหากต้องการเปิดใช้งานอีกครั้ง'
     };
     $('#pendingBadge').textContent = U.statusLabel[status] || status;
     $('#pendingBadge').className = `badge badge-${status}`;
@@ -274,7 +274,7 @@
     ];
     let html = items.map(([view, icon, label]) => `<button class="nav-btn ${state.currentView === view ? 'active' : ''}" data-view="${view}"><span class="nav-icon">${icon}</span>${label}</button>`).join('');
     if (isAdmin()) {
-      html += '<div class="nav-divider"></div><div class="nav-group">System Admin</div>';
+      html += '<div class="nav-divider"></div><div class="nav-group">ผู้ดูแลระบบ</div>';
       html += '<button class="nav-btn" data-view="admin"><span class="nav-icon">ADM</span>จัดการระบบ</button>';
     }
     $('#mainNav').innerHTML = html;
@@ -321,14 +321,14 @@
         </section>
         <section class="stat-grid">
           ${statCard('ประกาศที่กำลังเปิด', active.length, 'ทุกรายการที่บัญชีคุณเห็นได้')}
-          ${statCard('มีเลือดพร้อมติดต่อ', offer, 'Offer')}
-          ${statCard('กำลังต้องการเลือด', request, 'Request')}
+          ${statCard('มีเลือดพร้อมติดต่อ', offer, 'ประกาศ') }
+          ${statCard('กำลังต้องการเลือด', request, 'ประกาศ') }
           ${statCard('ของโรงพยาบาลฉัน', mine, `กำลังประสานงาน ${coordinating} รายการ`)}
         </section>
         <section class="panel">
           <div class="panel-header"><div><h2>เริ่มใช้งานจากตรงนี้</h2><p>เลือกตามสิ่งที่ต้องการทำ</p></div></div>
           <div class="panel-body quick-grid">
-            <button class="quick-card" data-view="browse"><b>ค้นหาเลือดหรือความต้องการ</b><span>กรองตาม Component, ABO, Rh, Antigen และโรงพยาบาล</span></button>
+            <button class="quick-card" data-view="browse"><b>ค้นหาเลือดหรือความต้องการ</b><span>กรองตามผลิตภัณฑ์ หมู่เลือด แอนติเจน และโรงพยาบาล</span></button>
             <button class="quick-card" data-action="create-offer"><b>ประกาศว่ามีเลือด</b><span>ระบุจำนวน วันหมดอายุ และแหล่งที่มาของเลือด</span></button>
             <button class="quick-card" data-action="create-request"><b>ประกาศว่าต้องการเลือด</b><span>ระบุจำนวน วันที่ต้องการ และระดับความเร่งด่วน</span></button>
           </div>
@@ -346,39 +346,43 @@
   }
 
   function renderBrowse() {
-    setPage('ค้นหาประกาศ', 'ค้นหาและกรองรายการที่ยังใช้งาน');
+    setPage('ค้นหาประกาศ', 'เลือกเงื่อนไขที่ต้องการค้นหาได้มากกว่าหนึ่งรายการ');
     const f = state.filters || {};
+    const selectedAntigens = Array.isArray(f.antigens) ? f.antigens : (f.antigen ? [f.antigen] : []);
     main.innerHTML = `
       <div class="page-stack">
         <section class="filters" id="announcementFilters">
-          <label class="filter-search">ค้นหาคำ<input id="filterText" value="${U.esc(f.text || '')}" placeholder="Component, โรงพยาบาล, แหล่งที่มา"></label>
-          <label>ประเภท<select id="filterType"><option value="">ทั้งหมด</option><option value="offer">มีเลือด</option><option value="request">ต้องการเลือด</option></select></label>
-          <label>Component<select id="filterComponent"><option value="">ทั้งหมด</option>${activeMasters(state.masters.components).map(c => `<option value="${c.id}">${U.esc(c.display_name)}</option>`).join('')}</select></label>
-          <label>ABO<select id="filterAbo"><option value="">ทั้งหมด</option>${['A','B','O','AB','not_specified'].map(x => `<option value="${x}">${x === 'not_specified' ? 'ไม่ระบุ' : x}</option>`).join('')}</select></label>
-          <label>Rh<select id="filterRh"><option value="">ทั้งหมด</option><option value="positive">Positive</option><option value="negative">Negative</option><option value="not_specified">ไม่ระบุ</option></select></label>
-          <label>Antigen Negative<select id="filterAntigen"><option value="">ทั้งหมด</option>${activeMasters(state.masters.antigens).map(a => `<option value="${U.esc(a.code)}">${U.esc(a.display_name)}-</option>`).join('')}</select></label>
+          <label class="filter-search">ค้นหาคำ<input id="filterText" value="${U.esc(f.text || '')}" placeholder="ชื่อผลิตภัณฑ์ โรงพยาบาล หรือแหล่งที่มา"></label>
+          <label>ประเภทประกาศ<select id="filterType"><option value="">ทั้งหมด</option><option value="offer">มีเลือดพร้อมให้ติดต่อ</option><option value="request">ต้องการเลือด</option></select></label>
+          <label>ผลิตภัณฑ์โลหิต<select id="filterComponent"><option value="">ทั้งหมด</option>${activeMasters(state.masters.components).map(c => `<option value="${c.id}">${U.esc(c.display_name)}</option>`).join('')}</select></label>
+          <label>หมู่เลือด ABO<select id="filterAbo"><option value="">ทั้งหมด</option>${['A','B','O','AB','not_specified'].map(x => `<option value="${x}">${x === 'not_specified' ? 'ไม่ระบุ' : x}</option>`).join('')}</select></label>
+          <label>หมู่เลือด Rh<select id="filterRh"><option value="">ทั้งหมด</option><option value="positive">Positive</option><option value="negative">Negative</option><option value="not_specified">ไม่ระบุ</option></select></label>
           <label>โรงพยาบาล<select id="filterHospital"><option value="">ทั้งหมด</option>${activeMasters(state.masters.hospitals).map(h => `<option value="${h.id}">${U.esc(h.name)}</option>`).join('')}</select></label>
-          <label>สถานะ<select id="filterStatus"><option value="">เปิด + กำลังประสานงาน</option><option value="open">เปิดรับการติดต่อ</option><option value="coordinating">กำลังประสานงาน</option></select></label>
-          <label>แหล่งที่มา<select id="filterSource"><option value="">ทั้งหมด</option>${activeMasters(state.masters.sources).map(s => `<option value="${s.id}">${U.esc(s.display_name)}</option>`).join('')}</select></label>
+          <label>สถานะประกาศ<select id="filterStatus"><option value="">รายการที่ยังติดต่อได้ทั้งหมด</option><option value="open">เปิดรับการติดต่อ</option><option value="coordinating">กำลังประสานงาน</option></select></label>
+          <label>แหล่งที่มาของเลือด<select id="filterSource"><option value="">ทั้งหมด</option>${activeMasters(state.masters.sources).map(s => `<option value="${s.id}">${U.esc(s.display_name)}</option>`).join('')}</select></label>
           <label>รูปประกอบ<select id="filterImage"><option value="">ทั้งหมด</option><option value="yes">มีรูป</option><option value="no">ไม่มีรูป</option></select></label>
-          <button class="btn btn-ghost" data-action="clear-filters">ล้างตัวกรอง</button>
+          <div class="filter-antigen-field">
+            <div class="filter-antigen-heading"><div><b>แอนติเจนที่ต้องการผลลบ</b><span>เลือกได้หลายรายการ โดยผลค้นหาต้องมีครบทุกตัวที่เลือก</span></div><small id="filterAntigenCount">ยังไม่ได้เลือก</small></div>
+            <div class="filter-antigen-picker">${activeMasters(state.masters.antigens).map(a => `<label class="antigen-option"><input type="checkbox" name="filterAntigen" value="${U.esc(a.code)}" ${selectedAntigens.includes(a.code) ? 'checked' : ''}><span>${U.esc(a.display_name)}-</span></label>`).join('')}</div>
+          </div>
+          <button class="btn btn-ghost filter-clear" data-action="clear-filters">ล้างตัวกรองทั้งหมด</button>
         </section>
         <div class="result-head"><div><h2>ผลการค้นหา</h2><p id="resultCount"></p></div><button class="btn btn-primary" data-view="create">สร้างประกาศ</button></div>
         <section id="announcementResults" class="announcement-grid"></section>
       </div>`;
-    Object.entries({ Type:'type', Component:'component', Abo:'abo', Rh:'rh', Antigen:'antigen', Hospital:'hospital', Status:'status', Source:'source', Image:'image' }).forEach(([id, key]) => {
+    Object.entries({ Type:'type', Component:'component', Abo:'abo', Rh:'rh', Hospital:'hospital', Status:'status', Source:'source', Image:'image' }).forEach(([id, key]) => {
       const el = $(`#filter${id}`); if (el && f[key]) el.value = f[key];
     });
     applyAnnouncementFilters();
     const handler = U.debounce(() => applyAnnouncementFilters(), 120);
-    $$('#announcementFilters input,#announcementFilters select').forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', handler));
+    $$('#announcementFilters input,#announcementFilters select').forEach(el => el.addEventListener(el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input', handler));
   }
 
   function collectFilters() {
     return {
       text: $('#filterText')?.value.trim().toLowerCase() || '', type: $('#filterType')?.value || '',
       component: $('#filterComponent')?.value || '', abo: $('#filterAbo')?.value || '', rh: $('#filterRh')?.value || '',
-      antigen: $('#filterAntigen')?.value || '', hospital: $('#filterHospital')?.value || '', status: $('#filterStatus')?.value || '',
+      antigens: $$('input[name="filterAntigen"]:checked').map(x => x.value), hospital: $('#filterHospital')?.value || '', status: $('#filterStatus')?.value || '',
       source: $('#filterSource')?.value || '', image: $('#filterImage')?.value || ''
     };
   }
@@ -389,19 +393,22 @@
     rows = rows.filter(a => {
       const searchable = [a.component?.display_name, a.other_component, a.hospital?.name, a.source?.display_name, a.blood_source_detail, a.contact_name].join(' ').toLowerCase();
       const hasImage = (a.images || []).some(i => i.image_status === 'active');
+      const announcementAntigens = a.phenotype_negative || [];
       return (!f.text || searchable.includes(f.text))
         && (!f.type || a.announcement_type === f.type)
         && (!f.component || a.component_id === f.component)
         && (!f.abo || a.abo === f.abo)
         && (!f.rh || a.rh === f.rh)
-        && (!f.antigen || (a.phenotype_negative || []).includes(f.antigen))
+        && (!f.antigens.length || f.antigens.every(code => announcementAntigens.includes(code)))
         && (!f.hospital || a.hospital_id === f.hospital)
         && (!f.status || a.status === f.status)
         && (!f.source || a.blood_source_id === f.source)
         && (!f.image || (f.image === 'yes' ? hasImage : !hasImage));
     });
+    const antigenCount = $('#filterAntigenCount');
+    if (antigenCount) antigenCount.textContent = f.antigens.length ? `เลือก ${f.antigens.length} รายการ` : 'ยังไม่ได้เลือก';
     $('#resultCount').textContent = `พบ ${rows.length.toLocaleString('th-TH')} รายการ`;
-    $('#announcementResults').innerHTML = rows.map(renderAnnouncementCard).join('') || emptyState('ไม่พบรายการที่ตรงกับตัวกรอง','ลองลดตัวกรองบางช่อง หรือสร้างประกาศใหม่');
+    $('#announcementResults').innerHTML = rows.map(renderAnnouncementCard).join('') || emptyState('ไม่พบรายการที่ตรงกับตัวกรอง','ลองลดเงื่อนไขบางช่อง หรือสร้างประกาศใหม่');
   }
 
   function renderMine() {
@@ -434,7 +441,7 @@
           ${a.announcement_type === 'request' ? `<div class="fact"><span>ความเร่งด่วน</span><b>${U.esc(U.urgencyLabel[a.urgency] || '-')}</b></div>` : ''}
           ${a.announcement_type === 'offer' ? `<div class="fact"><span>แหล่งที่มา</span><b>${U.esc(a.source?.display_name || '-')}</b></div>` : ''}
         </div>
-        ${antigen.length ? `<div><span class="card-kicker">Antigen Negative</span><div class="antigen-line">${antigen.map(x => `<span class="antigen-chip">${U.esc(x)}-</span>`).join('')}</div></div>` : ''}
+        ${antigen.length ? `<div><span class="card-kicker">แอนติเจนที่ต้องการผลลบ</span><div class="antigen-line">${antigen.map(x => `<span class="antigen-chip">${U.esc(x)}-</span>`).join('')}</div></div>` : ''}
         ${a.blood_source_detail ? `<div class="info-box"><b>รายละเอียดแหล่งที่มา</b><p>${U.esc(a.blood_source_detail)}</p></div>` : ''}
         ${image ? `<button class="image-button" data-action="view-image" data-id="${a.id}">ดูรูปภาพประกอบ (ไม่ใช้แทนการตรวจสอบตาม SOP)</button>` : ''}
         <div class="hospital-line"><b>${U.esc(a.hospital?.name || '-')}</b><span>${U.esc(a.hospital?.province || '')} · ผู้ติดต่อ ${U.esc(a.contact_name)}</span></div>
@@ -454,8 +461,8 @@
   function renderAnnouncementForm(item = null, presetType = null) {
     state.editingAnnouncement = item || null;
     state.compressedImage = null;
-    const type = item?.announcement_type || presetType || 'offer';
-    const componentId = item?.component_id || activeMasters(state.masters.components)[0]?.id || '';
+    const type = item?.announcement_type || presetType || '';
+    const componentId = item?.component_id || '';
     const sourceId = item?.blood_source_id || activeMasters(state.masters.sources)[0]?.id || '';
     const antigens = item?.phenotype_negative || [];
     const existingImage = (item?.images || []).find(i => i.image_status !== 'deleted');
@@ -471,11 +478,11 @@
               <label class="segment-option"><input type="radio" name="announcementType" value="request" ${type === 'request' ? 'checked' : ''} ${item ? 'disabled' : ''}><span>ต้องการเลือด</span></label>
             </div>
             <div class="field-grid">
-              <label>Component<select id="annComponent" required>${activeMasters(state.masters.components).map(c => `<option value="${c.id}" data-code="${U.esc(c.code)}" ${c.id === componentId ? 'selected' : ''}>${U.esc(c.display_name)}</option>`).join('')}</select></label>
+              <label>ผลิตภัณฑ์โลหิต<select id="annComponent" required><option value="" ${!componentId ? 'selected' : ''} disabled>-- กรุณาระบุ --</option>${activeMasters(state.masters.components).map(c => `<option value="${c.id}" data-code="${U.esc(c.code)}" ${c.id === componentId ? 'selected' : ''}>${U.esc(c.display_name)}</option>`).join('')}</select></label>
               <label id="otherComponentField" class="hidden">ระบุผลิตภัณฑ์อื่น<input id="annOtherComponent" maxlength="120" value="${U.esc(item?.other_component || '')}"></label>
-              <label>หมู่เลือด ABO<select id="annAbo" required>${['A','B','O','AB','not_specified'].map(x => `<option value="${x}" ${item?.abo === x ? 'selected' : ''}>${x === 'not_specified' ? 'ไม่ระบุ' : x}</option>`).join('')}</select></label>
-              <label>Rh<select id="annRh" required><option value="positive" ${item?.rh === 'positive' ? 'selected' : ''}>Positive</option><option value="negative" ${item?.rh === 'negative' ? 'selected' : ''}>Negative</option><option value="not_specified" ${(!item || item?.rh === 'not_specified') ? 'selected' : ''}>ไม่ระบุ</option></select></label>
-              <label>จำนวนทั้งหมด (Unit)<input id="annQtyTotal" type="number" min="1" max="9999" required value="${item?.quantity_total || 1}"></label>
+              <label>หมู่เลือด ABO<select id="annAbo" required><option value="" ${!item?.abo ? 'selected' : ''} disabled>-- กรุณาระบุ --</option>${['A','B','O','AB','not_specified'].map(x => `<option value="${x}" ${item?.abo === x ? 'selected' : ''}>${x === 'not_specified' ? 'ไม่ระบุ' : x}</option>`).join('')}</select></label>
+              <label>หมู่เลือด Rh<select id="annRh" required><option value="" ${!item?.rh ? 'selected' : ''} disabled>-- กรุณาระบุ --</option><option value="positive" ${item?.rh === 'positive' ? 'selected' : ''}>Positive</option><option value="negative" ${item?.rh === 'negative' ? 'selected' : ''}>Negative</option><option value="not_specified" ${item?.rh === 'not_specified' ? 'selected' : ''}>ไม่ระบุ</option></select></label>
+              <label>จำนวนทั้งหมด (Unit)<input id="annQtyTotal" type="number" min="1" max="9999" required value="${item?.quantity_total ?? ''}" placeholder="-- กรุณาระบุ --"></label>
               ${item ? `<label>จำนวนคงเหลือ/ยังต้องการ (Unit)<input id="annQtyRemaining" type="number" min="0" max="${item.quantity_total}" required value="${item.quantity_remaining}"></label>` : ''}
             </div>
           </section>
@@ -494,7 +501,7 @@
           </section>
 
           <section class="form-section">
-            <h2>3. Antigen Negative</h2><p>เลือกเฉพาะ Antigen ที่ต้องมีผลเป็น Negative ช่องที่ไม่เลือกหมายถึง “ไม่ระบุ” ไม่ได้หมายถึง Positive</p>
+            <h2>3. แอนติเจนที่ต้องการผลลบ</h2><p>เลือกได้มากกว่าหนึ่งรายการ ช่องที่ไม่ได้เลือกหมายถึง “ไม่ระบุ” ไม่ได้หมายถึงผลบวก</p>
             <div class="antigen-picker">${activeMasters(state.masters.antigens).map(a => `<label class="antigen-option"><input type="checkbox" name="antigen" value="${U.esc(a.code)}" ${antigens.includes(a.code) ? 'checked' : ''}><span>${U.esc(a.display_name)}-</span></label>`).join('')}</div>
           </section>
 
@@ -504,7 +511,7 @@
           </section>
 
           <section class="form-section">
-            <h2>5. รูปภาพประกอบ (ไม่บังคับ)</h2><p>สูงสุด 1 รูป ระบบจะลดขนาดและลบ Metadata ทั่วไปก่อนส่ง</p>
+            <h2>5. รูปภาพประกอบ (ไม่บังคับ)</h2><p>สูงสุด 1 รูป ระบบจะลดขนาดและลบข้อมูลแฝงทั่วไปก่อนส่ง</p>
             ${existingImage ? `<div class="notice success"><b>ประกาศนี้มีข้อมูลรูปอยู่แล้ว</b><p>สถานะ: ${U.esc(existingImage.image_status)} · หากต้องการเปลี่ยนรูป ให้ลบรูปเดิมก่อน แล้วกลับมาแก้ไขประกาศอีกครั้ง</p></div>` : `
               <div class="image-drop"><input id="annImage" type="file" accept="image/jpeg,image/png,image/webp"><p>รองรับ JPG, PNG, WebP ระบบตั้งเป้าหมายประมาณ 300–500 KB</p><img id="imagePreview" class="image-preview hidden" alt="ตัวอย่างรูป"><div id="imageInfo"></div><button id="removeSelectedImage" type="button" class="btn btn-ghost hidden">เอารูปออก</button></div>
               <div class="privacy-warning"><b>ห้ามมีข้อมูลต่อไปนี้ในรูป</b><br>ชื่อผู้ป่วย, HN, เลขบัตรประชาชน, Diagnosis, Donor ID, เลขถุงเลือด, Barcode, QR Code หรือข้อมูลที่ระบุตัวบุคคล/ผลิตภัณฑ์เฉพาะถุงได้</div>
@@ -526,7 +533,7 @@
     const form = $('#announcementForm');
     const typeInputs = $$('input[name="announcementType"]', form);
     const updateDynamic = () => {
-      const type = item?.announcement_type || $('input[name="announcementType"]:checked', form)?.value || initialType;
+      const type = item?.announcement_type || $('input[name="announcementType"]:checked', form)?.value || initialType || '';
       $('#offerFields').classList.toggle('hidden', type !== 'offer');
       $('#requestFields').classList.toggle('hidden', type !== 'request');
       const option = $('#annComponent').selectedOptions[0];
@@ -548,22 +555,23 @@
   }
 
   function currentFormType(item = state.editingAnnouncement) {
-    return item?.announcement_type || $('input[name="announcementType"]:checked')?.value || 'offer';
+    return item?.announcement_type || $('input[name="announcementType"]:checked')?.value || '';
   }
 
   function updateFormSummary(type) {
-    const component = $('#annComponent')?.selectedOptions[0]?.textContent || '-';
-    const abo = $('#annAbo')?.value || '-';
-    const rh = U.rhLabel[$('#annRh')?.value] || '-';
-    const qty = $('#annQtyRemaining')?.value || $('#annQtyTotal')?.value || '-';
+    const component = $('#annComponent')?.value ? ($('#annComponent').selectedOptions[0]?.textContent || 'ยังไม่ระบุ') : 'ยังไม่ระบุ';
+    const aboValue = $('#annAbo')?.value || '';
+    const abo = aboValue ? (aboValue === 'not_specified' ? 'ไม่ระบุ' : aboValue) : 'ยังไม่ระบุ';
+    const rh = U.rhLabel[$('#annRh')?.value] || 'ยังไม่ระบุ';
+    const qty = $('#annQtyRemaining')?.value || $('#annQtyTotal')?.value || 'ยังไม่ระบุ';
     const antigens = $$('input[name="antigen"]:checked').map(x => `${x.value}-`).join(' ') || 'ไม่ระบุ';
     const date = type === 'offer' ? $('#annExpiry')?.value : $('#annNeededBy')?.value;
     $('#formSummary').innerHTML = `
-      <dt>ประเภท</dt><dd>${U.esc(U.typeLabel[type])}</dd>
+      <dt>ประเภท</dt><dd>${U.esc(U.typeLabel[type] || 'ยังไม่ระบุ')}</dd>
       <dt>ผลิตภัณฑ์</dt><dd>${U.esc(component)} ${U.esc(abo)} Rh ${U.esc(rh)}</dd>
       <dt>จำนวน</dt><dd>${U.esc(qty)} Unit</dd>
       <dt>${type === 'offer' ? 'หมดอายุ' : 'ต้องการภายใน'}</dt><dd>${date ? U.fmtDate(date) : 'ยังไม่ระบุ'}</dd>
-      <dt>Antigen Negative</dt><dd>${U.esc(antigens)}</dd>`;
+      <dt>แอนติเจนที่ต้องการผลลบ</dt><dd>${U.esc(antigens)}</dd>`;
   }
 
   async function handleImageSelection(event) {
@@ -594,12 +602,16 @@
 
   function validateForm(item) {
     const type = currentFormType(item);
+    if (!['offer','request'].includes(type)) throw new Error('กรุณาเลือกประเภทประกาศ');
     const componentOption = $('#annComponent').selectedOptions[0];
-    if (!componentOption) throw new Error('กรุณาเลือก Component');
+    if (!componentOption || !$('#annComponent').value) throw new Error('กรุณาระบุผลิตภัณฑ์โลหิต');
     if (componentOption.dataset.code === 'OTHER' && !$('#annOtherComponent').value.trim()) throw new Error('กรุณาระบุผลิตภัณฑ์อื่น');
+    if (!$('#annAbo').value) throw new Error('กรุณาระบุหมู่เลือด ABO');
+    if (!$('#annRh').value) throw new Error('กรุณาระบุหมู่เลือด Rh');
+    if (!$('#annQtyTotal').value) throw new Error('กรุณาระบุจำนวนทั้งหมด');
     const qtyTotal = Number($('#annQtyTotal').value);
     const qtyRemaining = item ? Number($('#annQtyRemaining').value) : qtyTotal;
-    if (!Number.isInteger(qtyTotal) || qtyTotal <= 0) throw new Error('จำนวนทั้งหมดต้องมากกว่า 0');
+    if (!Number.isInteger(qtyTotal) || qtyTotal <= 0) throw new Error('จำนวนทั้งหมดต้องเป็นจำนวนเต็มมากกว่า 0');
     if (!Number.isInteger(qtyRemaining) || qtyRemaining < 0 || qtyRemaining > qtyTotal) throw new Error('จำนวนคงเหลือต้องอยู่ระหว่าง 0 ถึงจำนวนทั้งหมด');
     if (type === 'offer' && !$('#annExpiry').value) throw new Error('กรุณาระบุวันหมดอายุ');
     if (type === 'request' && !$('#annNeededBy').value) throw new Error('กรุณาระบุวันที่ต้องการ');
@@ -703,16 +715,16 @@
       <div class="page-stack">
         <div class="card-head"><div><span class="badge badge-${item.announcement_type}">${U.typeLabel[item.announcement_type]}</span><h2>${U.esc(item.component?.display_name || '-')} ${U.esc(item.abo)} Rh ${U.esc(U.rhLabel[item.rh])}</h2></div><span class="badge badge-${item.status}">${U.esc(U.statusLabel[item.status])}</span></div>
         <div class="card-facts"><div class="fact"><span>จำนวน</span><b>${item.quantity_remaining} Unit</b></div><div class="fact"><span>${dateLabel}</span><b>${U.fmtDate(date)}</b></div></div>
-        ${(item.phenotype_negative || []).length ? `<div><b>Antigen Negative</b><div class="antigen-line">${item.phenotype_negative.map(x => `<span class="antigen-chip">${U.esc(x)}-</span>`).join('')}</div></div>` : '<div class="info-box">ไม่ได้ระบุ Antigen Negative</div>'}
+        ${(item.phenotype_negative || []).length ? `<div><b>แอนติเจนที่ต้องการผลลบ</b><div class="antigen-line">${item.phenotype_negative.map(x => `<span class="antigen-chip">${U.esc(x)}-</span>`).join('')}</div></div>` : '<div class="info-box">ไม่ได้ระบุแอนติเจนที่ต้องการผลลบ</div>'}
         ${item.announcement_type === 'offer' ? `<div class="info-box"><b>แหล่งที่มา</b><p>${U.esc(item.source?.display_name || '-')}${item.blood_source_detail ? ` — ${U.esc(item.blood_source_detail)}` : ''}</p></div>` : `<div class="info-box"><b>ความเร่งด่วน</b><p>${U.esc(U.urgencyLabel[item.urgency] || '-')}</p></div>`}
         <div class="panel"><div class="panel-body"><b>${U.esc(item.hospital?.name || '-')}</b><p>ผู้ติดต่อ: ${U.esc(item.contact_name)}</p><p>โทร: <strong>${U.esc(item.contact_phone)}</strong></p><div class="inline-actions"><a class="btn btn-primary" href="${U.telHref(item.contact_phone)}">โทร</a><button class="btn btn-secondary" data-action="copy-phone" data-phone="${U.esc(item.contact_phone)}">คัดลอกเบอร์</button>${image ? `<button class="btn btn-soft" data-action="view-image" data-id="${item.id}">ดูรูปประกอบ</button>` : ''}</div></div></div>
-        <div class="notice warning"><b>Disclaimer</b><p>ข้อมูลและรูปใช้เพื่อช่วยค้นหาและติดต่อเท่านั้น โรงพยาบาลผู้รับต้องตรวจสอบผลิตภัณฑ์ เอกสาร ความเหมาะสม คุณภาพ การขนส่ง และดำเนินการตาม SOP ก่อนรับหรือจ่ายผลิตภัณฑ์โลหิต</p></div>
+        <div class="notice warning"><b>ข้อควรทราบ</b><p>ข้อมูลและรูปใช้เพื่อช่วยค้นหาและติดต่อเท่านั้น โรงพยาบาลผู้รับต้องตรวจสอบผลิตภัณฑ์ เอกสาร ความเหมาะสม คุณภาพ การขนส่ง และดำเนินการตาม SOP ก่อนรับหรือจ่ายผลิตภัณฑ์โลหิต</p></div>
       </div>`);
   }
 
   async function openImage(item) {
     try {
-      openModal('กำลังเปิดรูปภาพ', 'รูปไม่ถูกเปิดเป็น Public URL', '<div class="loading-block"><div class="spinner"></div></div>');
+      openModal('กำลังเปิดรูปภาพ', 'รูปนี้ไม่ได้เปิดเป็นลิงก์สาธารณะ', '<div class="loading-block"><div class="spinner"></div></div>');
       const data = await I.read({ accessToken: state.session.access_token, announcementId: item.id });
       $('#modalTitle').textContent = 'รูปภาพประกอบ';
       $('#modalSubtitle').textContent = 'ใช้ประกอบการติดต่อเท่านั้น ไม่ใช้แทนการตรวจสอบตาม SOP';
@@ -730,7 +742,7 @@
         <label>รายละเอียดเพิ่มเติม<textarea id="closeNote" maxlength="500" placeholder="ไม่ต้องใส่ชื่อผู้ป่วย HN Diagnosis หรือเลขถุงเลือด"></textarea></label>
         <label>ผลการประสานงาน<select id="coordResult" required><option value="success">สำเร็จ</option><option value="unsuccessful">ไม่สำเร็จ</option><option value="not_actioned">ไม่ได้ดำเนินการ</option><option value="unknown">ไม่ทราบผล</option></select></label>
         <label>จำนวนที่ประสานงานสำเร็จ (Unit)<input id="coordQty" type="number" min="0" max="${item.quantity_total}" value="0"></label>
-        <label>หมายเหตุผลการประสานงาน<textarea id="coordNote" maxlength="500" placeholder="Optional และห้ามมีข้อมูลผู้ป่วย"></textarea></label>
+        <label>หมายเหตุผลการประสานงาน<textarea id="coordNote" maxlength="500" placeholder="ไม่บังคับ และห้ามมีข้อมูลผู้ป่วย"></textarea></label>
         <label class="check-row"><input id="closePrivacy" type="checkbox" required><span>ยืนยันว่าข้อมูลที่กรอกไม่มีชื่อผู้ป่วย HN Diagnosis เลขถุงเลือด หรือข้อมูลส่วนบุคคล</span></label>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>กลับ</button><button id="confirmCloseBtn" type="submit" class="btn btn-primary">ยืนยันปิดรายการ</button></div>
       </form>`);
@@ -798,7 +810,7 @@
   }
 
   function confirmRemoveImage(item, fromAdmin = false) {
-    openModal('ลบรูปภาพประกอบ', 'ประกาศจะยังอยู่ตามสถานะเดิม', `<div class="notice warning"><b>ยืนยันการลบรูป</b><p>รูปจะถูกซ่อนทันที แล้ว Apps Script จะย้ายไฟล์ใน Private Drive ไป Trash หากลบไม่สำเร็จ ผู้ดูแลสามารถลองซ้ำได้</p></div><div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>กลับ</button><button id="confirmRemoveImageBtn" type="button" class="btn btn-danger">ยืนยันลบรูป</button></div>`);
+    openModal('ลบรูปภาพประกอบ', 'ประกาศจะยังอยู่ตามสถานะเดิม', `<div class="notice warning"><b>ยืนยันการลบรูป</b><p>รูปจะถูกซ่อนทันที แล้วระบบจะย้ายไฟล์ในโฟลเดอร์ Google Drive ส่วนตัวไปยังถังขยะ หากลบไม่สำเร็จ ผู้ดูแลสามารถลองอีกครั้งได้</p></div><div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>กลับ</button><button id="confirmRemoveImageBtn" type="button" class="btn btn-danger">ยืนยันลบรูป</button></div>`);
     $('#confirmRemoveImageBtn').addEventListener('click', async () => {
       const btn = $('#confirmRemoveImageBtn');
       try {
@@ -832,11 +844,11 @@
         <section class="guide-hero"><span class="eyebrow" style="color:var(--blue-700)">เริ่มใช้งานแบบทีละขั้น</span><h2>BENT ใช้ทำอะไร และต้องกดตรงไหน</h2><p>ระบบนี้เป็นพื้นที่กลางสำหรับ “ประกาศและติดต่อ” ไม่ใช่ระบบจองหรือยืนยันส่งมอบเลือด</p></section>
         <div id="installPromptBox" class="install-prompt"><div><b>ติดตั้ง BENT บนหน้าจอมือถือหรือแท็บเล็ต</b><p style="margin:2px 0;color:var(--muted)">เปิดได้เหมือนแอปและเข้าถึงง่ายขึ้น</p></div><button class="btn btn-primary" data-action="install-pwa">ดูวิธีติดตั้ง</button></div>
         <section class="guide-grid">
-          <article class="guide-card"><h3>1. สมัครและเข้าสู่ระบบ</h3><ol><li>กด “สมัครใช้งาน”</li><li>กรอกชื่อ โรงพยาบาล เบอร์โทร และอีเมล</li><li>เปิดอีเมลแล้วกดยืนยัน</li><li>รอ System Admin ตรวจสอบและอนุมัติ</li><li>เมื่อสถานะเป็น Active จึงเห็นประกาศและเบอร์โทรได้</li></ol></article>
-          <article class="guide-card"><h3>2. ค้นหาประกาศ</h3><ol><li>เปิดเมนู “ค้นหาประกาศ”</li><li>เลือก Offer หรือ Request</li><li>กรอง Component, ABO, Rh, Antigen, โรงพยาบาล หรือแหล่งที่มา</li><li>กด “ดูรายละเอียดและติดต่อ”</li><li>โทรหรือคัดลอกเบอร์ แล้วประสานงานตาม SOP ของโรงพยาบาล</li></ol></article>
-          <article class="guide-card"><h3>3. ประกาศว่ามีเลือด</h3><ol><li>เลือก “มีเลือดพร้อมให้ติดต่อ”</li><li>ระบุ Component, ABO, Rh และจำนวน</li><li>ใส่วันหมดอายุและแหล่งที่มา</li><li>ติ๊ก Antigen เฉพาะตัวที่เป็น Negative</li><li>แนบรูปได้ แต่ไม่บังคับ</li><li>ตรวจสรุปแล้วกด “สร้างประกาศ”</li></ol></article>
-          <article class="guide-card"><h3>4. ประกาศว่าต้องการเลือด</h3><ol><li>เลือก “ต้องการเลือด”</li><li>ระบุ Component, ABO, Rh และจำนวนที่ต้องการ</li><li>ใส่วันที่ต้องการและระดับความเร่งด่วน</li><li>ติ๊ก Antigen Negative ที่เป็นเงื่อนไข</li><li>กรอกผู้ติดต่อ แล้วสร้างประกาศ</li></ol></article>
-          <article class="guide-card"><h3>5. ระหว่างประสานงานและปิดรายการ</h3><ol><li>เมื่อเริ่มคุยกับโรงพยาบาลอื่น กด “กำลังประสานงาน”</li><li>แก้จำนวนคงเหลือ/ยังต้องการได้</li><li>เมื่อจบเรื่อง กด “ปิดรายการ”</li><li>เลือกเหตุผล ผลการประสานงาน และจำนวนที่สำเร็จ</li><li>รูปจะถูกซ่อนทันที แล้วระบบจึงลบจาก Drive</li></ol></article>
+          <article class="guide-card"><h3>1. สมัครและเข้าสู่ระบบ</h3><ol><li>กด “สมัครใช้งาน”</li><li>กรอกชื่อ โรงพยาบาล เบอร์โทร และอีเมล</li><li>รอผู้ดูแลระบบตรวจสอบและอนุมัติ</li><li>เปิดอีเมลที่ได้รับ แล้วตั้งรหัสผ่านของตนเอง</li><li>เมื่อบัญชีได้รับอนุมัติและเปิดใช้งานแล้ว จึงเห็นประกาศและเบอร์โทรได้</li></ol></article>
+          <article class="guide-card"><h3>2. ค้นหาประกาศ</h3><ol><li>เปิดเมนู “ค้นหาประกาศ”</li><li>เลือกว่ามีเลือดพร้อมให้ติดต่อหรือต้องการเลือด</li><li>กรองผลิตภัณฑ์ หมู่เลือด โรงพยาบาล หรือแหล่งที่มา</li><li>เลือกแอนติเจนผลลบได้หลายตัว โดยระบบจะค้นหารายการที่มีครบทุกตัวที่เลือก</li><li>กด “ดูรายละเอียดและติดต่อ”</li><li>โทรหรือคัดลอกเบอร์ แล้วประสานงานตาม SOP ของโรงพยาบาล</li></ol></article>
+          <article class="guide-card"><h3>3. ประกาศว่ามีเลือด</h3><ol><li>เลือก “มีเลือดพร้อมให้ติดต่อ”</li><li>ระบุผลิตภัณฑ์ หมู่เลือด ABO หมู่เลือด Rh และจำนวน</li><li>ใส่วันหมดอายุและแหล่งที่มา</li><li>เลือกแอนติเจนเฉพาะตัวที่ต้องการผลลบ</li><li>แนบรูปได้ แต่ไม่บังคับ</li><li>ตรวจสรุปแล้วกด “สร้างประกาศ”</li></ol></article>
+          <article class="guide-card"><h3>4. ประกาศว่าต้องการเลือด</h3><ol><li>เลือก “ต้องการเลือด”</li><li>ระบุผลิตภัณฑ์ หมู่เลือด ABO หมู่เลือด Rh และจำนวนที่ต้องการ</li><li>ใส่วันที่ต้องการและระดับความเร่งด่วน</li><li>เลือกแอนติเจนที่ต้องการผลลบตามเงื่อนไข</li><li>กรอกผู้ติดต่อ แล้วสร้างประกาศ</li></ol></article>
+          <article class="guide-card"><h3>5. ระหว่างประสานงานและปิดรายการ</h3><ol><li>เมื่อเริ่มคุยกับโรงพยาบาลอื่น กด “กำลังประสานงาน”</li><li>แก้จำนวนคงเหลือ/ยังต้องการได้</li><li>เมื่อจบเรื่อง กด “ปิดรายการ”</li><li>เลือกเหตุผล ผลการประสานงาน และจำนวนที่สำเร็จ</li><li>รูปจะถูกซ่อนทันที แล้วระบบจึงลบจาก Google Drive</li></ol></article>
           <article class="guide-card"><h3>6. การแนบรูปอย่างปลอดภัย</h3><ul class="danger-list"><li>ห้ามชื่อผู้ป่วย HN เลขบัตรประชาชน Diagnosis</li><li>ห้าม Donor ID เลขถุงเลือด Barcode และ QR Code</li><li>ครอบตัดหรือปิดบังข้อมูลก่อนเลือกไฟล์</li><li>รูปเป็นข้อมูลประกอบ ไม่ใช้แทนฉลากจริงหรือ SOP</li></ul></article>
         </section>
         <section class="panel"><div class="panel-header"><div><h2>ความหมายสถานะ</h2><p>ดูแล้วรู้ทันทีว่ารายการอยู่ขั้นไหน</p></div></div><div class="panel-body"><div class="antigen-line"><span class="badge badge-open">เปิดรับการติดต่อ</span><span class="badge badge-coordinating">กำลังประสานงาน</span><span class="badge badge-closed">ปิดแล้ว</span><span class="badge badge-cancelled">ยกเลิก</span><span class="badge badge-expired">หมดอายุ</span></div></div></section>
@@ -845,11 +857,11 @@
   }
 
   async function renderAdmin() {
-    setPage('จัดการระบบ', 'สำหรับ System Admin');
+    setPage('จัดการระบบ', 'สำหรับผู้ดูแลระบบ');
     main.innerHTML = `
       <div class="page-stack">
         <div class="admin-tabs">
-          ${[['requests','คำขอเปิดบัญชี'],['users','ผู้ใช้งาน'],['hospitals','โรงพยาบาล'],['announcements','ประกาศทั้งหมด'],['components','Component'],['antigens','Antigen'],['sources','แหล่งที่มา'],['stats','สถิติ Pilot'],['images','จัดการรูป'],['audit','Audit Log']].map(([key,label]) => `<button class="admin-tab ${state.adminTab === key ? 'active' : ''}" data-admin-tab="${key}">${label}</button>`).join('')}
+          ${[['requests','คำขอเปิดบัญชี'],['users','ผู้ใช้งาน'],['hospitals','โรงพยาบาล'],['announcements','ประกาศทั้งหมด'],['components','ผลิตภัณฑ์โลหิต'],['antigens','แอนติเจน'],['sources','แหล่งที่มา'],['stats','สถิติการใช้งาน'],['images','จัดการรูป'],['audit','ประวัติการเปลี่ยนแปลง']].map(([key,label]) => `<button class="admin-tab ${state.adminTab === key ? 'active' : ''}" data-admin-tab="${key}">${label}</button>`).join('')}
         </div>
         <div id="adminContent"><div class="loading-block"><div class="spinner"></div></div></div>
       </div>`;
@@ -876,7 +888,7 @@
   function adminAnnouncements(host) {
     const rows = state.announcements;
     const counts = ['open','coordinating','closed','cancelled','expired'].map(status => ({ status, total: rows.filter(x => x.status === status).length }));
-    host.innerHTML = `<div class="page-stack"><section class="stat-grid">${counts.map(x => statCard(U.statusLabel[x.status], x.total, 'รายการ')).join('')}</section><section class="panel"><div class="panel-header"><div><h2>ประกาศทุกโรงพยาบาล ${rows.length} รายการ</h2><p>System Admin เห็นรายการเปิดและประวัติที่ปิดแล้วทั้งหมด</p></div></div><div class="panel-body"><div class="announcement-grid">${rows.map(renderAnnouncementCard).join('') || emptyState('ยังไม่มีประกาศ','')}</div></div></section></div>`;
+    host.innerHTML = `<div class="page-stack"><section class="stat-grid">${counts.map(x => statCard(U.statusLabel[x.status], x.total, 'รายการ')).join('')}</section><section class="panel"><div class="panel-header"><div><h2>ประกาศทุกโรงพยาบาล ${rows.length} รายการ</h2><p>ผู้ดูแลระบบเห็นทั้งรายการที่เปิดอยู่และประวัติที่ปิดแล้ว</p></div></div><div class="panel-body"><div class="announcement-grid">${rows.map(renderAnnouncementCard).join('') || emptyState('ยังไม่มีประกาศ','')}</div></div></section></div>`;
   }
 
   async function adminAccountRequests(host) {
@@ -889,7 +901,7 @@
       return `<button class="btn btn-primary" data-action="admin-review-request" data-request="${request.id}">ตรวจสอบ</button>`;
     };
     const row = request => `<tr><td><b>${U.esc(request.full_name)}</b><br><small>${U.esc(request.email)}</small></td><td>${U.esc(request.hospital_name)}</td><td>${U.esc(request.phone)}</td><td><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span><br><small>${U.fmtDateTime(request.requested_at)}</small></td><td>${actions(request)}</td></tr>`;
-    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>คำขอเปิดบัญชี ${data.length} รายการ</h2><p>ตรวจสอบข้อมูลก่อนสร้าง Supabase Auth User และส่งลิงก์ตั้งรหัสผ่านผ่าน Google Apps Script</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้สมัคร</th><th>โรงพยาบาล</th><th>โทรศัพท์</th><th>สถานะ</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(request => `<div class="mobile-data-card"><b>${U.esc(request.full_name)}</b><span>${U.esc(request.email)}</span><span>${U.esc(request.hospital_name)} · ${U.esc(request.phone)}</span><div class="inline-actions"><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span>${actions(request)}</div></div>`).join('')}</div>` : emptyState('ยังไม่มีคำขอเปิดบัญชี','คำขอใหม่จะปรากฏที่หน้านี้')}</div></section>`;
+    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>คำขอเปิดบัญชี ${data.length} รายการ</h2><p>ตรวจสอบข้อมูลก่อนสร้างบัญชีผู้ใช้และส่งลิงก์ตั้งรหัสผ่านทางอีเมล</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้สมัคร</th><th>โรงพยาบาล</th><th>โทรศัพท์</th><th>สถานะ</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(request => `<div class="mobile-data-card"><b>${U.esc(request.full_name)}</b><span>${U.esc(request.email)}</span><span>${U.esc(request.hospital_name)} · ${U.esc(request.phone)}</span><div class="inline-actions"><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span>${actions(request)}</div></div>`).join('')}</div>` : emptyState('ยังไม่มีคำขอเปิดบัญชี','คำขอใหม่จะปรากฏที่หน้านี้')}</div></section>`;
     host.dataset.requests = JSON.stringify(data);
   }
 
@@ -902,7 +914,7 @@
         <label>โรงพยาบาลที่ผู้สมัครแจ้ง<input value="${U.esc(request.hospital_name || '')}" readonly></label>
         <label>ตำแหน่ง/หน่วยงาน<input value="${U.esc(request.position_title || '')}" readonly></label>
         <label>กำหนดโรงพยาบาลในระบบ<select id="requestHospital" required><option value="">เลือกโรงพยาบาล</option>${state.masters.hospitals.filter(h => h.is_active).map(h => `<option value="${h.id}">${U.esc(h.name)}</option>`).join('')}</select></label>
-        <label>Role<select id="requestRole"><option value="user">User</option><option value="system_admin">System Admin</option></select></label>
+        <label>สิทธิ์การใช้งาน<select id="requestRole"><option value="user">ผู้ใช้งาน</option><option value="system_admin">ผู้ดูแลระบบ</option></select></label>
         <label>หมายเหตุของผู้ดูแล<textarea id="requestAdminNote" maxlength="500">${U.esc(request.admin_note || '')}</textarea></label>
         <div class="notice warning"><b>เมื่อกดอนุมัติ</b><p>ระบบจะสร้างบัญชีแบบยืนยันอีเมลแล้ว แต่ยังไม่มีรหัสผ่าน จากนั้นส่งลิงก์ BENT ที่ไม่มีการหมดอายุตามเวลาให้ผู้สมัครตั้งรหัสผ่านเอง</p></div>
         <div class="modal-actions">
@@ -951,8 +963,8 @@
   async function adminUsers(host) {
     const { data, error } = await state.supabase.from('bent_profiles').select('*, hospital:bent_hospitals(id,name)').order('created_at', { ascending: false });
     if (error) throw error;
-    const row = p => `<tr><td><b>${U.esc(p.full_name || '-')}</b><br><small>${U.esc(p.email)}</small></td><td>${U.esc(p.hospital?.name || p.hospital_name_requested || '-')}</td><td><span class="badge badge-${p.status}">${U.esc(U.statusLabel[p.status])}</span></td><td>${p.role === 'system_admin' ? 'System Admin' : 'User'}</td><td><button class="btn btn-soft" data-action="admin-edit-user" data-user="${p.id}">จัดการ</button></td></tr>`;
-    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>ผู้ใช้งาน ${data.length} บัญชี</h2><p>อนุมัติบัญชี กำหนดโรงพยาบาล และแต่งตั้ง System Admin</p></div></div><div class="panel-body"><div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้ใช้</th><th>โรงพยาบาล</th><th>สถานะ</th><th>Role</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(p => `<div class="mobile-data-card"><b>${U.esc(p.full_name || p.email)}</b><span>${U.esc(p.email)}</span><span>${U.esc(p.hospital?.name || p.hospital_name_requested || '-')}</span><div class="inline-actions"><span class="badge badge-${p.status}">${U.esc(U.statusLabel[p.status])}</span><button class="btn btn-soft" data-action="admin-edit-user" data-user="${p.id}">จัดการ</button></div></div>`).join('')}</div></div></section>`;
+    const row = p => `<tr><td><b>${U.esc(p.full_name || '-')}</b><br><small>${U.esc(p.email)}</small></td><td>${U.esc(p.hospital?.name || p.hospital_name_requested || '-')}</td><td><span class="badge badge-${p.status}">${U.esc(U.statusLabel[p.status])}</span></td><td>${p.role === 'system_admin' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้งาน'}</td><td><button class="btn btn-soft" data-action="admin-edit-user" data-user="${p.id}">จัดการ</button></td></tr>`;
+    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>ผู้ใช้งาน ${data.length} บัญชี</h2><p>อนุมัติบัญชี กำหนดโรงพยาบาล และแต่งตั้งผู้ดูแลระบบ</p></div></div><div class="panel-body"><div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้ใช้</th><th>โรงพยาบาล</th><th>สถานะ</th><th>สิทธิ์</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(p => `<div class="mobile-data-card"><b>${U.esc(p.full_name || p.email)}</b><span>${U.esc(p.email)}</span><span>${U.esc(p.hospital?.name || p.hospital_name_requested || '-')}</span><div class="inline-actions"><span class="badge badge-${p.status}">${U.esc(U.statusLabel[p.status])}</span><button class="btn btn-soft" data-action="admin-edit-user" data-user="${p.id}">จัดการ</button></div></div>`).join('')}</div></div></section>`;
     host.dataset.users = JSON.stringify(data);
   }
 
@@ -963,8 +975,8 @@
         <label>เบอร์โทร<input id="adminUserPhone" value="${U.esc(user.phone || '')}" maxlength="30"></label>
         <label>โรงพยาบาล<select id="adminUserHospital"><option value="">ยังไม่กำหนด</option>${state.masters.hospitals.map(h => `<option value="${h.id}" ${h.id === user.hospital_id ? 'selected' : ''}>${U.esc(h.name)}</option>`).join('')}</select></label>
         <label>สถานะ<select id="adminUserStatus">${['pending','active','rejected','suspended','inactive'].map(x => `<option value="${x}" ${x === user.status ? 'selected' : ''}>${U.esc(U.statusLabel[x])}</option>`).join('')}</select></label>
-        <label>Role<select id="adminUserRole"><option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option><option value="system_admin" ${user.role === 'system_admin' ? 'selected' : ''}>System Admin</option></select></label>
-        <div class="notice warning"><b>ข้อควรระวัง</b><p>บัญชี Active ต้องกำหนดโรงพยาบาล และการแต่งตั้ง System Admin จะถูกบันทึกใน Audit Log</p></div>
+        <label>สิทธิ์การใช้งาน<select id="adminUserRole"><option value="user" ${user.role === 'user' ? 'selected' : ''}>ผู้ใช้งาน</option><option value="system_admin" ${user.role === 'system_admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option></select></label>
+        <div class="notice warning"><b>ข้อควรระวัง</b><p>บัญชีที่เปิดใช้งานต้องกำหนดโรงพยาบาล และการแต่งตั้งผู้ดูแลระบบ จะถูกบันทึกในประวัติการเปลี่ยนแปลง</p></div>
         <div class="modal-actions"><button id="adminSendPasswordLinkBtn" type="button" class="btn btn-soft">ส่งลิงก์ตั้งรหัสผ่านใหม่</button><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="adminSaveUserBtn" class="btn btn-primary" type="submit">บันทึก</button></div>
       </form>`);
     $('#adminSendPasswordLinkBtn').addEventListener('click', async () => {
@@ -981,7 +993,7 @@
       try {
         setButtonBusy(btn, true);
         const status = $('#adminUserStatus').value; const hospital = $('#adminUserHospital').value || null;
-        if (status === 'active' && !hospital) throw new Error('บัญชี Active ต้องกำหนดโรงพยาบาล');
+        if (status === 'active' && !hospital) throw new Error('บัญชีที่เปิดใช้งานต้องกำหนดโรงพยาบาล');
         const { error } = await state.supabase.rpc('bent_admin_update_user', {
           p_user_id: user.id, p_status: status, p_role: $('#adminUserRole').value, p_hospital_id: hospital,
           p_full_name: $('#adminUserName').value.trim() || null, p_phone: $('#adminUserPhone').value.trim() || null
@@ -1028,12 +1040,12 @@
 
   function adminMaster(host, tab) {
     const map = {
-      components: { table:'bent_components', list:state.masters.components, label:'Component', code:'เช่น PRC_NEW' },
-      antigens: { table:'bent_antigens', list:state.masters.antigens, label:'Antigen', code:'เช่น Vel' },
+      components: { table:'bent_components', list:state.masters.components, label:'ผลิตภัณฑ์โลหิต', code:'เช่น PRC_NEW' },
+      antigens: { table:'bent_antigens', list:state.masters.antigens, label:'แอนติเจน', code:'เช่น Vel' },
       sources: { table:'bent_blood_sources', list:state.masters.sources, label:'แหล่งที่มา', code:'เช่น regional_center' }
     };
     const m = map[tab];
-    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>จัดการ ${m.label}</h2><p>ปิดใช้งานแทนการลบ เพื่อรักษาประวัติประกาศเดิม</p></div></div><div class="panel-body"><form id="masterAddForm" class="master-row-form"><label>Code<input id="masterCode" required placeholder="${m.code}" maxlength="60"></label><label>ชื่อที่แสดง<input id="masterName" required maxlength="180"></label><label>ลำดับ<input id="masterOrder" type="number" min="0" value="100"></label>${tab === 'sources' ? '<label class="check-row"><input id="masterRequiresDetail" type="checkbox"><span>บังคับรายละเอียด</span></label>' : '<span></span>'}<button class="btn btn-primary" type="submit">เพิ่ม</button></form><div class="table-wrap" style="margin-top:18px"><table class="data-table"><thead><tr><th>Code</th><th>ชื่อ</th><th>ลำดับ</th>${tab === 'sources' ? '<th>รายละเอียด</th>':''}<th>สถานะ</th><th></th></tr></thead><tbody>${m.list.map(x => `<tr><td><code>${U.esc(x.code)}</code></td><td>${U.esc(x.display_name)}</td><td>${x.sort_order}</td>${tab === 'sources' ? `<td>${x.requires_detail ? 'บังคับ':'ไม่บังคับ'}</td>`:''}<td><span class="badge badge-${x.is_active ? 'active':'inactive'}">${x.is_active ? 'ใช้งาน':'ปิด'}</span></td><td><div class="inline-actions"><button class="btn btn-soft" data-action="edit-master" data-tab="${tab}" data-id="${x.id}">แก้ไข</button><button class="btn btn-ghost" data-action="toggle-master" data-tab="${tab}" data-id="${x.id}">${x.is_active ? 'ปิดใช้งาน':'เปิดใช้งาน'}</button></div></td></tr>`).join('')}</tbody></table></div></div></section>`;
+    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>จัดการ ${m.label}</h2><p>ปิดใช้งานแทนการลบ เพื่อรักษาประวัติประกาศเดิม</p></div></div><div class="panel-body"><form id="masterAddForm" class="master-row-form"><label>รหัสระบบ<input id="masterCode" required placeholder="${m.code}" maxlength="60"></label><label>ชื่อที่แสดง<input id="masterName" required maxlength="180"></label><label>ลำดับ<input id="masterOrder" type="number" min="0" value="100"></label>${tab === 'sources' ? '<label class="check-row"><input id="masterRequiresDetail" type="checkbox"><span>บังคับรายละเอียด</span></label>' : '<span></span>'}<button class="btn btn-primary" type="submit">เพิ่ม</button></form><div class="table-wrap" style="margin-top:18px"><table class="data-table"><thead><tr><th>รหัสระบบ</th><th>ชื่อ</th><th>ลำดับ</th>${tab === 'sources' ? '<th>รายละเอียด</th>':''}<th>สถานะ</th><th></th></tr></thead><tbody>${m.list.map(x => `<tr><td><code>${U.esc(x.code)}</code></td><td>${U.esc(x.display_name)}</td><td>${x.sort_order}</td>${tab === 'sources' ? `<td>${x.requires_detail ? 'บังคับ':'ไม่บังคับ'}</td>`:''}<td><span class="badge badge-${x.is_active ? 'active':'inactive'}">${x.is_active ? 'ใช้งาน':'ปิด'}</span></td><td><div class="inline-actions"><button class="btn btn-soft" data-action="edit-master" data-tab="${tab}" data-id="${x.id}">แก้ไข</button><button class="btn btn-ghost" data-action="toggle-master" data-tab="${tab}" data-id="${x.id}">${x.is_active ? 'ปิดใช้งาน':'เปิดใช้งาน'}</button></div></td></tr>`).join('')}</tbody></table></div></div></section>`;
     $('#masterAddForm').addEventListener('submit', async event => {
       event.preventDefault(); const btn = event.submitter;
       try {
@@ -1049,7 +1061,7 @@
 
   function openMasterEdit(tab, item) {
     const map = { components:'bent_components', antigens:'bent_antigens', sources:'bent_blood_sources' };
-    openModal('แก้ไข Master Data', `Code: ${item.code}`, `<form id="editMasterForm"><label>Code<input value="${U.esc(item.code)}" disabled></label><label>ชื่อที่แสดง<input id="editMasterName" value="${U.esc(item.display_name)}" required maxlength="180"></label><label>ลำดับ<input id="editMasterOrder" type="number" min="0" value="${item.sort_order}" required></label>${tab === 'sources' ? `<label class="check-row"><input id="editMasterDetail" type="checkbox" ${item.requires_detail ? 'checked':''}><span>บังคับกรอกรายละเอียดเพิ่มเติม</span></label>` : ''}<label>สถานะ<select id="editMasterActive"><option value="true" ${item.is_active ? 'selected':''}>ใช้งาน</option><option value="false" ${!item.is_active ? 'selected':''}>ปิดใช้งาน</option></select></label><div class="notice warning"><b>Code ไม่ให้แก้</b><p>เพื่อไม่ให้ประกาศเก่าหรือกติกาภายในระบบเสียหาย สามารถแก้ชื่อ ลำดับ และสถานะได้</p></div><div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="saveMasterEdit" type="submit" class="btn btn-primary">บันทึก</button></div></form>`);
+    openModal('แก้ไขข้อมูลรายการ', `รหัสระบบ: ${item.code}`, `<form id="editMasterForm"><label>รหัสระบบ<input value="${U.esc(item.code)}" disabled></label><label>ชื่อที่แสดง<input id="editMasterName" value="${U.esc(item.display_name)}" required maxlength="180"></label><label>ลำดับ<input id="editMasterOrder" type="number" min="0" value="${item.sort_order}" required></label>${tab === 'sources' ? `<label class="check-row"><input id="editMasterDetail" type="checkbox" ${item.requires_detail ? 'checked':''}><span>บังคับกรอกรายละเอียดเพิ่มเติม</span></label>` : ''}<label>สถานะ<select id="editMasterActive"><option value="true" ${item.is_active ? 'selected':''}>ใช้งาน</option><option value="false" ${!item.is_active ? 'selected':''}>ปิดใช้งาน</option></select></label><div class="notice warning"><b>รหัสระบบแก้ไขไม่ได้</b><p>เพื่อไม่ให้ประกาศเก่าหรือกติกาภายในระบบเสียหาย สามารถแก้ชื่อ ลำดับ และสถานะได้</p></div><div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="saveMasterEdit" type="submit" class="btn btn-primary">บันทึก</button></div></form>`);
     $('#editMasterForm').addEventListener('submit', async event => {
       event.preventDefault(); const btn = $('#saveMasterEdit');
       try {
@@ -1057,7 +1069,7 @@
         const payload = { display_name: $('#editMasterName').value.trim(), sort_order: Number($('#editMasterOrder').value), is_active: $('#editMasterActive').value === 'true' };
         if (tab === 'sources') payload.requires_detail = $('#editMasterDetail').checked;
         const { error } = await state.supabase.from(map[tab]).update(payload).eq('id', item.id); if (error) throw error;
-        await loadMasters(); closeModal(); toast('แก้ไข Master Data แล้ว','','success'); await loadAdminTab(tab);
+        await loadMasters(); closeModal(); toast('แก้ไขข้อมูลรายการแล้ว','','success'); await loadAdminTab(tab);
       } catch (error) { toast('บันทึกไม่สำเร็จ',U.friendlyError(error),'error'); }
       finally { setButtonBusy(btn,false); }
     });
@@ -1078,7 +1090,7 @@
       const list = rows || []; const max = Math.max(...list.map(x => x.total),1);
       return `<section class="panel"><div class="panel-header"><h2>${U.esc(title)}</h2></div><div class="panel-body chart-list">${list.map(x => `<div class="chart-row"><span>${U.esc(x[labelKey] || '-')}</span><div class="chart-bar"><span style="width:${Math.round(x.total/max*100)}%"></span></div><b>${x.total}</b></div>`).join('') || 'ยังไม่มีข้อมูล'}</div></section>`;
     };
-    host.innerHTML = `<div class="page-stack"><section class="stat-grid">${statCard('โรงพยาบาล Active',data.hospitals_active,'แห่ง')}${statCard('ผู้ใช้งาน Active',data.users_active,'บัญชี')}${statCard('Offer ทั้งหมด',data.offers,'รายการ')}${statCard('Request ทั้งหมด',data.requests,'รายการ')}${statCard('ประสานงานสำเร็จ',data.success_items,'รายการ')}${statCard('Unit ที่สำเร็จ',data.coordinated_units,'Unit')}${statCard('หาได้ช่องทางอื่น',data.found_other_channel,'รายการ')}${statCard('เวลาเฉลี่ยจนปิด',data.average_close_hours,'ชั่วโมง')}${statCard('รายการหมดอายุ',data.expired_items,'รายการ')}${statCard('ประกาศมีรูป',data.with_images,'รายการ')}${statCard('รูปซ่อน/ลบ',data.images_hidden_or_deleted,'รายการ')}</section>${chart('Component ที่ถูกประกาศมากที่สุด',data.top_components,'display_name')}${chart('Antigen Negative ที่ถูกประกาศมากที่สุด',data.top_antigens,'antigen')}${chart('แหล่งที่มาของผลิตภัณฑ์โลหิต',data.blood_sources,'display_name')}${chart('เหตุผลการปิดรายการ',data.closure_reasons,'closure_reason')}</div>`;
+    host.innerHTML = `<div class="page-stack"><section class="stat-grid">${statCard('โรงพยาบาลที่เปิดใช้งาน',data.hospitals_active,'แห่ง')}${statCard('ผู้ใช้งานที่เปิดใช้งาน',data.users_active,'บัญชี')}${statCard('ประกาศว่ามีเลือดทั้งหมด',data.offers,'รายการ')}${statCard('ประกาศว่าต้องการเลือดทั้งหมด',data.requests,'รายการ')}${statCard('ประสานงานสำเร็จ',data.success_items,'รายการ')}${statCard('Unit ที่สำเร็จ',data.coordinated_units,'Unit')}${statCard('หาได้ช่องทางอื่น',data.found_other_channel,'รายการ')}${statCard('เวลาเฉลี่ยจนปิด',data.average_close_hours,'ชั่วโมง')}${statCard('รายการหมดอายุ',data.expired_items,'รายการ')}${statCard('ประกาศมีรูป',data.with_images,'รายการ')}${statCard('รูปซ่อน/ลบ',data.images_hidden_or_deleted,'รายการ')}</section>${chart('ผลิตภัณฑ์ที่ถูกประกาศมากที่สุด',data.top_components,'display_name')}${chart('แอนติเจนผลลบที่ถูกประกาศมากที่สุด',data.top_antigens,'antigen')}${chart('แหล่งที่มาของผลิตภัณฑ์โลหิต',data.blood_sources,'display_name')}${chart('เหตุผลการปิดรายการ',data.closure_reasons,'closure_reason')}</div>`;
   }
 
   async function adminImages(host) {
@@ -1091,20 +1103,20 @@
       return '-';
     };
     host.dataset.images = JSON.stringify(data);
-    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>จัดการรูป ${data.length} รายการ</h2><p>ซ่อนรูปได้ทันที หรือลบไฟล์จาก Private Drive โดยเหตุการณ์จะถูกบันทึกใน Audit Log</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ไฟล์</th><th>โรงพยาบาล</th><th>ประกาศ</th><th>สถานะรูป</th><th>ข้อผิดพลาด</th><th></th></tr></thead><tbody>${data.map(x => `<tr><td>${U.esc(x.image_file_name)}</td><td>${U.esc(x.announcement?.hospital?.name || '-')}</td><td>${U.esc(U.statusLabel[x.announcement?.status] || x.announcement?.status || '-')}</td><td>${U.esc(x.image_status)}</td><td>${U.esc(x.delete_error || '-')}</td><td><div class="inline-actions">${buttons(x)}</div></td></tr>`).join('')}</tbody></table></div>` : emptyState('ยังไม่มีรูปในระบบ','')}</div></section>`;
+    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>จัดการรูป ${data.length} รายการ</h2><p>ซ่อนรูปได้ทันที หรือลบไฟล์จากโฟลเดอร์ Google Drive ส่วนตัว โดยระบบจะเก็บประวัติการเปลี่ยนแปลง</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ไฟล์</th><th>โรงพยาบาล</th><th>ประกาศ</th><th>สถานะรูป</th><th>ข้อผิดพลาด</th><th></th></tr></thead><tbody>${data.map(x => `<tr><td>${U.esc(x.image_file_name)}</td><td>${U.esc(x.announcement?.hospital?.name || '-')}</td><td>${U.esc(U.statusLabel[x.announcement?.status] || x.announcement?.status || '-')}</td><td>${U.esc(x.image_status)}</td><td>${U.esc(x.delete_error || '-')}</td><td><div class="inline-actions">${buttons(x)}</div></td></tr>`).join('')}</tbody></table></div>` : emptyState('ยังไม่มีรูปในระบบ','')}</div></section>`;
     host.dataset.images = JSON.stringify(data);
   }
 
   async function adminAudit(host) {
     const { data, error } = await state.supabase.from('bent_audit_logs').select('*').order('performed_at',{ascending:false}).limit(150); if (error) throw error;
-    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>Audit Log ล่าสุด</h2><p>เก็บการเปลี่ยนแปลงสำคัญโดยไม่ตั้งใจเก็บข้อมูลผู้ป่วย</p></div></div><div class="panel-body"><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>Action</th><th>Entity</th><th>ผู้ดำเนินการ</th><th>ข้อมูลใหม่</th></tr></thead><tbody>${data.map(x => `<tr><td>${U.fmtDateTime(x.performed_at)}</td><td>${U.esc(x.action)}</td><td>${U.esc(x.entity_type)}<br><small>${U.esc(x.entity_id || '')}</small></td><td>${U.esc(x.performed_by || '-')}</td><td><div class="audit-json">${U.esc(JSON.stringify(x.new_data,null,2) || '-')}</div></td></tr>`).join('')}</tbody></table></div></div></section>`;
+    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>ประวัติการเปลี่ยนแปลงล่าสุด</h2><p>เก็บการเปลี่ยนแปลงสำคัญโดยไม่ตั้งใจเก็บข้อมูลผู้ป่วย</p></div></div><div class="panel-body"><div class="table-wrap"><table class="data-table"><thead><tr><th>วันเวลา</th><th>การทำรายการ</th><th>ข้อมูลที่เกี่ยวข้อง</th><th>ผู้ดำเนินการ</th><th>ข้อมูลใหม่</th></tr></thead><tbody>${data.map(x => `<tr><td>${U.fmtDateTime(x.performed_at)}</td><td>${U.esc(x.action)}</td><td>${U.esc(x.entity_type)}<br><small>${U.esc(x.entity_id || '')}</small></td><td>${U.esc(x.performed_by || '-')}</td><td><div class="audit-json">${U.esc(JSON.stringify(x.new_data,null,2) || '-')}</div></td></tr>`).join('')}</tbody></table></div></div></section>`;
   }
 
   function showOnboardingOnce() {
     const key = `bent_onboarding_${state.session.user.id}`;
     if (localStorage.getItem(key)) return;
     localStorage.setItem(key, 'shown');
-    openModal('เริ่มใช้ BENT ใน 4 ขั้นตอน', 'อ่านครั้งเดียวก็เริ่มใช้งานได้', `<div class="guide-grid"><div class="guide-card"><h3>1. ค้นหา</h3><p>ใช้ตัวกรองเพื่อหา Component, ABO, Rh และ Antigen ที่ต้องการ</p></div><div class="guide-card"><h3>2. ติดต่อ</h3><p>เปิดรายละเอียด แล้วโทรหรือคัดลอกเบอร์ผู้ติดต่อ</p></div><div class="guide-card"><h3>3. สร้างประกาศ</h3><p>เลือก Offer หรือ Request แล้วกรอกเฉพาะข้อมูลที่จำเป็น</p></div><div class="guide-card"><h3>4. ปิดรายการ</h3><p>บันทึกผลสั้น ๆ เพื่อใช้เป็นสถิติ Pilot โดยไม่ใส่ข้อมูลผู้ป่วย</p></div></div><div class="notice warning"><b>ห้ามบันทึก</b><p>ชื่อผู้ป่วย HN Diagnosis Donor ID เลขถุงเลือด Barcode หรือ QR Code</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>เข้าใจแล้ว เริ่มใช้งาน</button></div>`);
+    openModal('เริ่มใช้ BENT ใน 4 ขั้นตอน', 'อ่านครั้งเดียวก็เริ่มใช้งานได้', `<div class="guide-grid"><div class="guide-card"><h3>1. ค้นหา</h3><p>ใช้ตัวกรองเพื่อหาผลิตภัณฑ์ หมู่เลือด และแอนติเจนที่ต้องการ</p></div><div class="guide-card"><h3>2. ติดต่อ</h3><p>เปิดรายละเอียด แล้วโทรหรือคัดลอกเบอร์ผู้ติดต่อ</p></div><div class="guide-card"><h3>3. สร้างประกาศ</h3><p>เลือกว่ามีเลือดหรือต้องการเลือด แล้วกรอกเฉพาะข้อมูลที่จำเป็น</p></div><div class="guide-card"><h3>4. ปิดรายการ</h3><p>บันทึกผลสั้น ๆ เพื่อใช้เป็นสถิติการใช้งาน โดยไม่ใส่ข้อมูลผู้ป่วย</p></div></div><div class="notice warning"><b>ห้ามบันทึก</b><p>ชื่อผู้ป่วย HN Diagnosis Donor ID เลขถุงเลือด Barcode หรือ QR Code</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>เข้าใจแล้ว เริ่มใช้งาน</button></div>`);
   }
 
   function openInstallHelp() {
@@ -1171,7 +1183,7 @@
         position_title: $('#registerPosition').value.trim(),
         website: $('#registerWebsite').value
       });
-      openModal('ส่งคำขอแล้ว', 'ยังไม่มีการสร้างบัญชีในขั้นตอนนี้', `<ol><li>System Admin ตรวจสอบข้อมูลและโรงพยาบาล</li><li>เมื่ออนุมัติ ระบบจะส่งลิงก์ตั้งรหัสผ่านไปยังอีเมลที่ระบุ</li><li>เปิดลิงก์ ตั้งรหัสผ่าน แล้วเข้าสู่ระบบ</li></ol><div class="notice warning"><b>ลิงก์ไม่มีการหมดอายุตามเวลา</b><p>ลิงก์ใช้ได้หนึ่งครั้ง และลิงก์เดิมจะถูกยกเลิกเมื่อมีการออกลิงก์ใหม่</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>รับทราบ</button></div>`);
+      openModal('ส่งคำขอแล้ว', 'ยังไม่มีการสร้างบัญชีในขั้นตอนนี้', `<ol><li>ผู้ดูแลระบบตรวจสอบข้อมูลและโรงพยาบาล</li><li>เมื่ออนุมัติ ระบบจะส่งลิงก์ตั้งรหัสผ่านไปยังอีเมลที่ระบุ</li><li>เปิดลิงก์ ตั้งรหัสผ่าน แล้วเข้าสู่ระบบ</li></ol><div class="notice warning"><b>ลิงก์ไม่มีการหมดอายุตามเวลา</b><p>ลิงก์ใช้ได้หนึ่งครั้ง และลิงก์เดิมจะถูกยกเลิกเมื่อมีการออกลิงก์ใหม่</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>รับทราบ</button></div>`);
       event.target.reset();
     } catch (error) { toast('ส่งคำขอไม่สำเร็จ', U.friendlyError(error), 'error'); }
     finally { setButtonBusy(btn, false); }
