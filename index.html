@@ -13,13 +13,21 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css">
+  <link rel="stylesheet" href="assets/css/app.css?v=1.2.2">
 </head>
 <body>
   <div id="offlineBanner" class="offline-banner hidden" role="status">ขณะนี้อุปกรณ์ออฟไลน์ ระบบจะแสดงข้อมูลที่เปิดไว้ได้ แต่ยังบันทึกรายการใหม่ไม่ได้</div>
   <div id="toastHost" class="toast-host" aria-live="polite"></div>
 
-  <section id="setupScreen" class="screen hidden"></section>
+  <section id="setupScreen" class="screen">
+    <div class="setup-card" id="bootLoadingCard">
+      <img src="assets/icons/icon-192.png" alt="BENT" class="status-logo">
+      <h1>กำลังเปิด BENT</h1>
+      <p>ระบบกำลังตรวจสอบการเชื่อมต่อและสถานะบัญชี</p>
+      <div class="loading-block"><div class="spinner"></div></div>
+      <noscript><div class="notice danger"><b>เบราว์เซอร์ปิด JavaScript</b><p>กรุณาเปิด JavaScript แล้วโหลดหน้าใหม่</p></div></noscript>
+    </div>
+  </section>
 
   <section id="authScreen" class="auth-page hidden">
     <div class="auth-hero">
@@ -145,9 +153,26 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="assets/js/config.js"></script>
-  <script src="assets/js/utils.js"></script>
-  <script src="assets/js/image-service.js"></script>
-  <script src="assets/js/app.js"></script>
+  <script src="assets/js/config.js?v=1.2.2"></script>
+  <script src="assets/js/utils.js?v=1.2.2"></script>
+  <script src="assets/js/image-service.js?v=1.2.2"></script>
+  <script src="assets/js/app.js?v=1.2.2"></script>
+  <script>
+    window.setTimeout(function () {
+      var screens = ['setupScreen','authScreen','passwordSetupScreen','pendingScreen','appShell'];
+      var visible = screens.some(function (id) {
+        var el = document.getElementById(id);
+        return el && !el.classList.contains('hidden');
+      });
+      var setup = document.getElementById('setupScreen');
+      var loadingCard = document.getElementById('bootLoadingCard');
+      var setupIsVisible = setup && !setup.classList.contains('hidden');
+      if (!visible || (setupIsVisible && loadingCard)) {
+        if (!setup) return;
+        setup.classList.remove('hidden');
+        setup.innerHTML = '<div class="setup-card"><img src="assets/icons/icon-192.png" alt="BENT" class="status-logo"><h1>เปิด BENT ไม่สำเร็จ</h1><p>ไฟล์หน้าเว็บอาจยังเป็นรุ่นเก่าจากแคช หรืออินเทอร์เน็ตขัดข้อง</p><div class="notice warning"><b>ให้กด Ctrl + F5 หนึ่งครั้ง</b><p>หากยังไม่ขึ้น ให้ปิดแท็บนี้แล้วเปิดเว็บไซต์ใหม่</p></div><button class="btn btn-primary" type="button" onclick="location.reload()">โหลดหน้าใหม่</button></div>';
+      }
+    }, 12000);
+  </script>
 </body>
 </html>

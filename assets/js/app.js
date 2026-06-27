@@ -20,7 +20,8 @@
     adminTab: 'requests',
     filters: {},
     initialized: false,
-    setupToken: null
+    setupToken: null,
+    authRouteId: 0
   };
 
   const screens = {
@@ -110,9 +111,23 @@
       return;
     }
 
-    state.supabase.auth.onAuthStateChange(async (_event, session) => {
+    let passwordSetupCompleted = false;
+    try {
+      passwordSetupCompleted = sessionStorage.getItem('bent_password_setup_success') === '1';
+      if (passwordSetupCompleted) sessionStorage.removeItem('bent_password_setup_success');
+    } catch (_) {}
+
+    // A setup-link page intentionally returns before registering the auth listener.
+    // After password setup we therefore reload to the clean URL and initialize auth here.
+    if (passwordSetupCompleted) {
+      try { await state.supabase.auth.signOut({ scope: 'local' }); } catch (_) {}
+    }
+
+    // Keep this callback synchronous. Running Supabase queries directly inside an
+    // async onAuthStateChange callback can deadlock the client.
+    state.supabase.auth.onAuthStateChange((_event, session) => {
       state.session = session;
-      await routeSession();
+      scheduleRouteSession();
     });
 
     const { data, error } = await state.supabase.auth.getSession();
@@ -120,6 +135,11 @@
     state.session = data?.session || null;
     await routeSession();
     state.initialized = true;
+
+    if (passwordSetupCompleted && !state.session?.user) {
+      showScreen('auth');
+      openModal('ตั้งรหัสผ่านสำเร็จ', 'บัญชีพร้อมใช้งานแล้ว', `<p>เข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่เพิ่งกำหนดได้ทันที</p><div class="modal-actions"><button class="btn btn-primary" data-close-modal>เข้าสู่ระบบ</button></div>`);
+    }
   }
 
   async function inspectPasswordSetupToken() {
@@ -148,14 +168,18 @@
       if (password !== confirm) throw new Error('PASSWORDS_NOT_MATCH');
       setButtonBusy(button, true, 'กำลังบันทึก...');
       await I.call({ action: 'set_password', setup_token: state.setupToken, new_password: password });
-      try { await state.supabase.auth.signOut(); } catch (_) {}
       const cleanUrl = new URL(location.href);
       cleanUrl.searchParams.delete('setup');
-      history.replaceState({}, '', cleanUrl.toString());
+      cleanUrl.hash = '';
+      try { sessionStorage.setItem('bent_password_setup_success', '1'); } catch (_) {}
       state.setupToken = null;
       event.target.reset();
-      showScreen('auth');
-      openModal('ตั้งรหัสผ่านสำเร็จ', 'บัญชีพร้อมใช้งานแล้ว', `<p>เข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่เพิ่งกำหนดได้ทันที</p><div class="modal-actions"><button class="btn btn-primary" data-close-modal>เข้าสู่ระบบ</button></div>`);
+
+      // Reload the clean URL so the normal auth listener is registered. The setup-link
+      // branch exits init() early by design, so merely revealing the login form leaves
+      // the page unable to route a successful login into the application.
+      location.replace(cleanUrl.toString());
+      return;
     } catch (error) {
       toast('ตั้งรหัสผ่านไม่สำเร็จ', U.friendlyError(error), 'error');
     } finally {
@@ -169,15 +193,38 @@
     location.href = cleanUrl.toString();
   }
 
+  function scheduleRouteSession() {
+    window.setTimeout(() => {
+      routeSession().catch(handleRouteSessionError);
+    }, 0);
+  }
+
+  function handleRouteSessionError(error) {
+    if (state.session?.user) {
+      showScreen('pending');
+      $('#pendingTitle').textContent = 'เปิดบัญชีไม่สำเร็จ';
+      $('#pendingMessage').textContent = U.friendlyError(error);
+    } else {
+      showScreen('auth');
+    }
+    toast('เปิดหน้าใช้งานไม่สำเร็จ', U.friendlyError(error), 'error');
+  }
+
   async function routeSession() {
-    if (!state.session?.user) {
+    const routeId = ++state.authRouteId;
+    const sessionAtStart = state.session;
+
+    if (!sessionAtStart?.user) {
       state.profile = null;
       showScreen('auth');
       return;
     }
 
     const { data: profile, error } = await state.supabase
-      .from('bent_profiles').select('*').eq('id', state.session.user.id).maybeSingle();
+      .from('bent_profiles').select('*').eq('id', sessionAtStart.user.id).maybeSingle();
+
+    // Ignore stale work when a newer auth event has already started another route.
+    if (routeId !== state.authRouteId || state.session?.user?.id !== sessionAtStart.user.id) return;
 
     if (error) {
       showScreen('pending');
@@ -192,7 +239,7 @@
       return;
     }
 
-    await enterApp();
+    await enterApp(routeId);
   }
 
   function renderPending(profile) {
@@ -216,13 +263,14 @@
     $('#pendingMessage').textContent = msgMap[status] || 'กรุณาติดต่อผู้ดูแลระบบ';
   }
 
-  async function enterApp() {
+  async function enterApp(routeId = state.authRouteId) {
     showScreen('app');
     loading();
     try {
       await loadMasters();
       state.hospital = state.masters.hospitals.find(h => h.id === state.profile.hospital_id) || null;
       await loadAnnouncements();
+      if (routeId !== state.authRouteId || !state.session?.user) return;
       renderNavigation();
       renderUserBlock();
       await navigate(state.currentView || 'dashboard');
@@ -1180,7 +1228,7 @@
     $('#forgotPasswordBtn').addEventListener('click', forgotPassword);
     $('#logoutBtn').addEventListener('click', logout);
     $('#pendingLogoutBtn').addEventListener('click', logout);
-    $('#refreshProfileBtn').addEventListener('click', routeSession);
+    $('#refreshProfileBtn').addEventListener('click', () => routeSession().catch(handleRouteSessionError));
     $('#mainNav').addEventListener('click', e => { const btn = e.target.closest('[data-view]'); if (btn) navigate(btn.dataset.view); });
     $('#openSidebarBtn').addEventListener('click', openSidebar);
     $('#closeSidebarBtn').addEventListener('click', closeSidebar);
@@ -1198,10 +1246,14 @@
     event.preventDefault(); const btn = event.submitter;
     try {
       setButtonBusy(btn, true, 'กำลังเข้าสู่ระบบ...');
-      const { error } = await state.supabase.auth.signInWithPassword({ email: $('#loginEmail').value.trim(), password: $('#loginPassword').value });
+      const { data, error } = await state.supabase.auth.signInWithPassword({ email: $('#loginEmail').value.trim(), password: $('#loginPassword').value });
       if (error) throw error;
-    } catch (error) { toast('เข้าสู่ระบบไม่สำเร็จ', U.friendlyError(error), 'error'); }
-    finally { setButtonBusy(btn, false); }
+      state.session = data?.session || null;
+      await routeSession();
+    } catch (error) {
+      showScreen('auth');
+      toast('เข้าสู่ระบบไม่สำเร็จ', U.friendlyError(error), 'error');
+    } finally { setButtonBusy(btn, false); }
   }
 
   async function register(event) {
@@ -1299,7 +1351,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.2.2').catch(() => {}));
     }
   }
 
