@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b6aa8">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Blood Exchange Network Thailand ระบบช่วยค้นหาและประสานงานผลิตภัณฑ์โลหิตระหว่างโรงพยาบาล">
+  <title>BENT — Blood Exchange Network Thailand</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+  <div id="offlineBanner" class="offline-banner hidden" role="status">ขณะนี้อุปกรณ์ออฟไลน์ ระบบจะแสดงข้อมูลที่เปิดไว้ได้ แต่ยังบันทึกรายการใหม่ไม่ได้</div>
+  <div id="toastHost" class="toast-host" aria-live="polite"></div>
+
+  <section id="setupScreen" class="screen hidden"></section>
+
+  <section id="authScreen" class="auth-page hidden">
+    <div class="auth-hero">
+      <div class="brand-lockup">
+        <img src="assets/icons/icon-192.png" alt="BENT" class="brand-logo">
+        <div><strong>BENT</strong><span>Blood Exchange Network Thailand</span></div>
+      </div>
+      <div class="hero-copy">
+        <span class="eyebrow">ระบบช่วยค้นหาและประสานงานผลิตภัณฑ์โลหิต</span>
+        <h1>ค้นหาง่าย ติดต่อไว<br>ข้อมูลอยู่เป็นระบบ</h1>
+        <p>ใช้สำหรับประกาศว่ามีเลือดพร้อมให้ติดต่อ หรือกำลังต้องการเลือดระหว่างโรงพยาบาล โดยไม่เก็บข้อมูลผู้ป่วย ผู้บริจาค หรือเลขถุงเลือด</p>
+      </div>
+      <div class="how-it-works">
+        <div><b>1</b><span>สมัครและยืนยันอีเมล</span></div>
+        <div><b>2</b><span>รอผู้ดูแลอนุมัติบัญชี</span></div>
+        <div><b>3</b><span>เริ่มค้นหาและลงประกาศ</span></div>
+      </div>
+      <p class="disclaimer-light">BENT ไม่ใช่ระบบจองเลือด และไม่ใช้แทนการตรวจสอบผลิตภัณฑ์ เอกสาร การขนส่ง หรือ SOP ของโรงพยาบาล</p>
+    </div>
+
+    <div class="auth-panel">
+      <div class="auth-card">
+        <div class="auth-tabs" role="tablist">
+          <button type="button" class="auth-tab active" data-auth-tab="login">เข้าสู่ระบบ</button>
+          <button type="button" class="auth-tab" data-auth-tab="register">สมัครใช้งาน</button>
+        </div>
+
+        <form id="loginForm" class="auth-form" autocomplete="on">
+          <div class="form-heading"><h2>ยินดีต้อนรับกลับ</h2><p>เข้าสู่ระบบด้วยอีเมลที่สมัครไว้</p></div>
+          <label>อีเมล<input id="loginEmail" type="email" autocomplete="email" required placeholder="name@hospital.ac.th"></label>
+          <label>รหัสผ่าน
+            <span class="password-wrap"><input id="loginPassword" type="password" autocomplete="current-password" required minlength="8"><button type="button" class="show-password" data-target="loginPassword">แสดง</button></span>
+          </label>
+          <button type="submit" class="btn btn-primary btn-block">เข้าสู่ระบบ</button>
+          <button type="button" id="forgotPasswordBtn" class="text-btn">ลืมรหัสผ่าน</button>
+        </form>
+
+        <form id="registerForm" class="auth-form hidden" autocomplete="on">
+          <div class="form-heading"><h2>สมัครใช้งาน BENT</h2><p>หลังยืนยันอีเมล ผู้ดูแลจะตรวจสอบและอนุมัติบัญชี</p></div>
+          <label>ชื่อ–นามสกุล<input id="registerName" type="text" required maxlength="120" placeholder="ชื่อผู้ใช้งานจริง"></label>
+          <label>โรงพยาบาล<input id="registerHospital" type="text" required maxlength="180" placeholder="ชื่อโรงพยาบาลแบบเต็ม"></label>
+          <label>เบอร์โทรติดต่อหน่วยงาน<input id="registerPhone" type="tel" required maxlength="30" placeholder="เช่น 02-xxx-xxxx ต่อ xxxx"></label>
+          <label>อีเมล<input id="registerEmail" type="email" autocomplete="email" required placeholder="แนะนำอีเมลหน่วยงาน"></label>
+          <label>ตั้งรหัสผ่าน
+            <span class="password-wrap"><input id="registerPassword" type="password" autocomplete="new-password" required minlength="8"><button type="button" class="show-password" data-target="registerPassword">แสดง</button></span>
+          </label>
+          <label class="check-row"><input id="registerAgreement" type="checkbox" required><span>ยืนยันว่าจะไม่บันทึกข้อมูลผู้ป่วย ผู้บริจาค เลขถุงเลือด Barcode หรือ QR Code ลงในระบบ</span></label>
+          <button type="submit" class="btn btn-primary btn-block">สมัครใช้งาน</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section id="pendingScreen" class="status-page hidden">
+    <div class="status-card">
+      <img src="assets/icons/icon-192.png" alt="BENT" class="status-logo">
+      <span id="pendingBadge" class="badge badge-pending">รออนุมัติ</span>
+      <h1 id="pendingTitle">บัญชีอยู่ระหว่างตรวจสอบ</h1>
+      <p id="pendingMessage">ผู้ดูแลระบบจะตรวจสอบโรงพยาบาลและข้อมูลผู้สมัครก่อนเปิดใช้งาน</p>
+      <div class="info-box">
+        <b>ขั้นตอนที่ต้องทำ</b>
+        <p>ตรวจสอบว่าได้กดยืนยันอีเมลจาก Supabase แล้ว จากนั้นรอ System Admin อนุมัติบัญชีและกำหนดโรงพยาบาล</p>
+      </div>
+      <button id="refreshProfileBtn" type="button" class="btn btn-primary">ตรวจสอบสถานะอีกครั้ง</button>
+      <button id="pendingLogoutBtn" type="button" class="btn btn-ghost">ออกจากระบบ</button>
+    </div>
+  </section>
+
+  <div id="appShell" class="app-shell hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-head">
+        <img src="assets/icons/icon-192.png" alt="BENT">
+        <div><strong>BENT</strong><span>Blood Exchange Network</span></div>
+        <button id="closeSidebarBtn" class="icon-btn sidebar-close" type="button" aria-label="ปิดเมนู">×</button>
+      </div>
+      <nav id="mainNav" class="nav-list" aria-label="เมนูหลัก"></nav>
+      <div class="sidebar-foot">
+        <div id="sidebarUser" class="mini-user"></div>
+        <button id="logoutBtn" type="button" class="btn btn-sidebar">ออกจากระบบ</button>
+      </div>
+    </aside>
+    <div id="sidebarBackdrop" class="sidebar-backdrop hidden"></div>
+
+    <section class="workspace">
+      <header class="topbar">
+        <button id="openSidebarBtn" class="icon-btn menu-btn" type="button" aria-label="เปิดเมนู">☰</button>
+        <div class="topbar-title"><h1 id="pageTitle">ภาพรวม</h1><p id="pageSubtitle">Blood Exchange Network Thailand</p></div>
+        <div class="topbar-actions"><span id="connectionStatus" class="connection-pill">ออนไลน์</span><button id="helpTopBtn" type="button" class="btn btn-soft">คู่มือ</button></div>
+      </header>
+      <main id="mainContent" class="main-content" tabindex="-1"></main>
+    </section>
+  </div>
+
+  <div id="modalRoot" class="modal-root hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header"><div><h2 id="modalTitle"></h2><p id="modalSubtitle"></p></div><button type="button" class="icon-btn" data-close-modal aria-label="ปิด">×</button></header>
+      <div id="modalBody" class="modal-body"></div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/utils.js"></script>
+  <script src="assets/js/image-service.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
