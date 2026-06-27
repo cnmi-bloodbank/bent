@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=1.2.2">
+  <link rel="stylesheet" href="assets/css/app.css?v=1.3.1">
 </head>
 <body>
   <div id="offlineBanner" class="offline-banner hidden" role="status">ขณะนี้อุปกรณ์ออฟไลน์ ระบบจะแสดงข้อมูลที่เปิดไว้ได้ แต่ยังบันทึกรายการใหม่ไม่ได้</div>
@@ -68,8 +68,32 @@
         <form id="registerForm" class="auth-form hidden" autocomplete="on">
           <div class="form-heading"><h2>สมัครใช้งาน BENT</h2><p>ส่งคำขอก่อน โดยยังไม่ต้องตั้งรหัสผ่าน</p></div>
           <label>ชื่อ–นามสกุล<input id="registerName" type="text" required maxlength="120" placeholder="ชื่อผู้ใช้งานจริง"></label>
-          <label>โรงพยาบาล<input id="registerHospital" type="text" required maxlength="180" placeholder="ชื่อโรงพยาบาลแบบเต็ม"></label>
-          <label>เบอร์โทรติดต่อหน่วยงาน<input id="registerPhone" type="tel" required maxlength="30" placeholder="เช่น 02-xxx-xxxx ต่อ xxxx"></label>
+          <label>จังหวัด
+            <select id="registerProvince" required>
+              <option value="">-- กรุณาเลือกจังหวัด --</option>
+            </select>
+          </label>
+          <div class="hospital-registration-field">
+            <label>โรงพยาบาล
+              <input id="registerHospitalSearch" type="search" maxlength="180" autocomplete="off" disabled placeholder="เลือกจังหวัดก่อน แล้วพิมพ์ชื่อโรงพยาบาล">
+            </label>
+            <input id="registerHospitalId" type="hidden" value="">
+            <input id="registerHospitalMode" type="hidden" value="">
+            <div id="registerHospitalSuggestions" class="autocomplete-list hidden" role="listbox" aria-label="รายชื่อโรงพยาบาล"></div>
+            <div id="registerHospitalSelected" class="selected-hospital hidden"></div>
+            <button id="registerNewHospitalBtn" type="button" class="text-btn hospital-request-link" disabled>ไม่พบโรงพยาบาลของฉัน — ขอเพิ่มโรงพยาบาลใหม่</button>
+          </div>
+          <div id="registerNewHospitalFields" class="proposed-hospital-box hidden">
+            <div class="notice warning"><b>โรงพยาบาลใหม่จะยังไม่ถูกเพิ่มทันที</b><p>ผู้ดูแลระบบจะตรวจชื่อซ้ำและอนุมัติก่อน โรงพยาบาลจึงจะเข้า Master</p></div>
+            <label>ชื่อโรงพยาบาลตามชื่อทางการ<input id="registerNewHospitalName" type="text" maxlength="180" placeholder="เช่น โรงพยาบาลตัวอย่าง"></label>
+            <label>เบอร์โทรหลักของโรงพยาบาลตามข้อมูลทางการ<input id="registerHospitalPhoneProposed" type="tel" maxlength="30" placeholder="เช่น 02-xxx-xxxx"></label>
+          </div>
+          <div id="registerExistingHospitalPhone" class="proposed-hospital-box hidden">
+            <p id="registerHospitalPhoneCurrent" class="field-help"></p>
+            <button id="registerHospitalPhoneBtn" type="button" class="text-btn hospital-request-link">ไม่พบเบอร์โทรโรงพยาบาลของฉัน — ขอเพิ่มเบอร์โทรโรงพยาบาลใหม่</button>
+            <label id="registerHospitalPhoneProposalLabel" class="hidden">เบอร์โทรหลักของโรงพยาบาลตามข้อมูลทางการ<input id="registerExistingHospitalPhoneProposed" type="tel" maxlength="30" placeholder="เช่น 02-xxx-xxxx"></label>
+          </div>
+          <label>เบอร์โทรติดต่อผู้สมัคร/หน่วยงาน<input id="registerPhone" type="tel" required maxlength="30" placeholder="เช่น 02-xxx-xxxx ต่อ xxxx"></label>
           <label>อีเมล<input id="registerEmail" type="email" autocomplete="email" required placeholder="แนะนำอีเมลหน่วยงาน"></label>
           <label>ตำแหน่ง/หน่วยงาน (ถ้ามี)<input id="registerPosition" type="text" maxlength="160" placeholder="เช่น นักเทคนิคการแพทย์ ห้องคลังเลือด"></label>
           <input id="registerWebsite" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" class="honeypot" value="">
@@ -153,10 +177,10 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="assets/js/config.js?v=1.2.2"></script>
-  <script src="assets/js/utils.js?v=1.2.2"></script>
-  <script src="assets/js/image-service.js?v=1.2.2"></script>
-  <script src="assets/js/app.js?v=1.2.2"></script>
+  <script src="assets/js/config.js?v=1.3.1"></script>
+  <script src="assets/js/utils.js?v=1.3.1"></script>
+  <script src="assets/js/image-service.js?v=1.3.1"></script>
+  <script src="assets/js/app.js?v=1.3.1"></script>
   <script>
     window.setTimeout(function () {
       var screens = ['setupScreen','authScreen','passwordSetupScreen','pendingScreen','appShell'];

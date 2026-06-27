@@ -21,13 +21,228 @@
     filters: {},
     initialized: false,
     setupToken: null,
-    authRouteId: 0
+    authRouteId: 0,
+    registrationHospitals: [],
+    registrationOptionsProvince: '',
+    registrationOptionsLoadingProvince: ''
   };
 
   const screens = {
     setup: $('#setupScreen'), auth: $('#authScreen'), passwordSetup: $('#passwordSetupScreen'), pending: $('#pendingScreen'), app: $('#appShell')
   };
   const main = $('#mainContent');
+
+
+  const THAI_PROVINCES = [
+    'กรุงเทพมหานคร','สมุทรปราการ','นนทบุรี','ปทุมธานี','พระนครศรีอยุธยา','อ่างทอง','ลพบุรี','สิงห์บุรี','ชัยนาท','สระบุรี',
+    'ชลบุรี','ระยอง','จันทบุรี','ตราด','ฉะเชิงเทรา','ปราจีนบุรี','นครนายก','สระแก้ว','นครราชสีมา','บุรีรัมย์','สุรินทร์',
+    'ศรีสะเกษ','อุบลราชธานี','ยโสธร','ชัยภูมิ','อำนาจเจริญ','บึงกาฬ','หนองบัวลำภู','ขอนแก่น','อุดรธานี','เลย','หนองคาย',
+    'มหาสารคาม','ร้อยเอ็ด','กาฬสินธุ์','สกลนคร','นครพนม','มุกดาหาร','เชียงใหม่','ลำพูน','ลำปาง','อุตรดิตถ์','แพร่','น่าน',
+    'พะเยา','เชียงราย','แม่ฮ่องสอน','นครสวรรค์','อุทัยธานี','กำแพงเพชร','ตาก','สุโขทัย','พิษณุโลก','พิจิตร','เพชรบูรณ์',
+    'ราชบุรี','กาญจนบุรี','สุพรรณบุรี','นครปฐม','สมุทรสาคร','สมุทรสงคราม','เพชรบุรี','ประจวบคีรีขันธ์','นครศรีธรรมราช',
+    'กระบี่','พังงา','ภูเก็ต','สุราษฎร์ธานี','ระนอง','ชุมพร','สงขลา','สตูล','ตรัง','พัทลุง','ปัตตานี','ยะลา','นราธิวาส'
+  ];
+
+
+  function provinceOptions(selected = '') {
+    return `<option value="">-- กรุณาเลือกจังหวัด --</option>${THAI_PROVINCES.map(name => `<option value="${U.esc(name)}" ${name === selected ? 'selected' : ''}>${U.esc(name)}</option>`).join('')}`;
+  }
+
+  function normalizeHospitalName(value) {
+    return String(value || '')
+      .toLowerCase()
+      .trim()
+      .replace(/^(โรงพยาบาล|ร\.?\s*พ\.?)\s*/i, '')
+      .replace(/[\s\u00a0().,\-_/\\]+/g, '');
+  }
+
+  function levenshteinDistance(a, b) {
+    const left = String(a || '');
+    const right = String(b || '');
+    if (!left.length) return right.length;
+    if (!right.length) return left.length;
+    const row = Array.from({ length: right.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= left.length; i += 1) {
+      let previous = row[0];
+      row[0] = i;
+      for (let j = 1; j <= right.length; j += 1) {
+        const saved = row[j];
+        const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + cost);
+        previous = saved;
+      }
+    }
+    return row[right.length];
+  }
+
+  function hospitalSimilarity(left, right) {
+    const a = normalizeHospitalName(left);
+    const b = normalizeHospitalName(right);
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    const longest = Math.max(a.length, b.length);
+    const editScore = longest ? 1 - (levenshteinDistance(a, b) / longest) : 0;
+    const containsScore = (Math.min(a.length, b.length) >= 6 && (a.includes(b) || b.includes(a)))
+      ? Math.min(a.length, b.length) / longest
+      : 0;
+    return Math.max(editScore, containsScore);
+  }
+
+  function similarHospitals(name, province, includeInactive = true) {
+    const target = normalizeHospitalName(name);
+    if (!target) return [];
+    return state.masters.hospitals
+      .filter(hospital => (!province || hospital.province === province) && (includeInactive || hospital.is_active))
+      .map(hospital => ({ hospital, score: hospitalSimilarity(name, hospital.name) }))
+      .filter(item => item.score >= 0.68)
+      .sort((a, b) => b.score - a.score || a.hospital.name.localeCompare(b.hospital.name, 'th'));
+  }
+
+  function initializeRegistrationForm() {
+    const province = $('#registerProvince');
+    if (!province) return;
+    province.innerHTML = provinceOptions('');
+    resetRegistrationHospital(false);
+  }
+
+  async function loadRegistrationOptions(province = $('#registerProvince')?.value || '') {
+    if (!province) return;
+    if (state.registrationOptionsProvince === province) {
+      renderRegistrationHospitalSuggestions();
+      return;
+    }
+    if (state.registrationOptionsLoadingProvince === province) return;
+
+    state.registrationOptionsLoadingProvince = province;
+    const search = $('#registerHospitalSearch');
+    if (search && $('#registerProvince')?.value === province) {
+      search.placeholder = 'กำลังโหลดรายชื่อโรงพยาบาลในจังหวัดนี้...';
+    }
+
+    try {
+      const data = await I.call({ action: 'get_registration_options', province });
+      if ($('#registerProvince')?.value !== province) return;
+      state.registrationHospitals = Array.isArray(data.hospitals) ? data.hospitals : [];
+      state.registrationOptionsProvince = province;
+      if (search) search.placeholder = 'พิมพ์อย่างน้อย 1 ตัวอักษรเพื่อค้นหา';
+      renderRegistrationHospitalSuggestions();
+    } catch (error) {
+      if ($('#registerProvince')?.value === province) {
+        state.registrationHospitals = [];
+        state.registrationOptionsProvince = '';
+        if (search) search.placeholder = 'โหลดรายชื่อโรงพยาบาลไม่สำเร็จ กรุณาลองใหม่';
+      }
+      throw error;
+    } finally {
+      if (state.registrationOptionsLoadingProvince === province) {
+        state.registrationOptionsLoadingProvince = '';
+      }
+    }
+  }
+
+  function resetRegistrationHospital(clearProvince = false) {
+    if (clearProvince && $('#registerProvince')) $('#registerProvince').value = '';
+    if ($('#registerHospitalId')) $('#registerHospitalId').value = '';
+    if ($('#registerHospitalMode')) $('#registerHospitalMode').value = '';
+    if ($('#registerHospitalSearch')) {
+      $('#registerHospitalSearch').value = '';
+      $('#registerHospitalSearch').disabled = !$('#registerProvince')?.value;
+      $('#registerHospitalSearch').placeholder = $('#registerProvince')?.value
+        ? 'พิมพ์บางส่วนของชื่อโรงพยาบาล'
+        : 'เลือกจังหวัดก่อน แล้วพิมพ์ชื่อโรงพยาบาล';
+    }
+    if ($('#registerNewHospitalBtn')) $('#registerNewHospitalBtn').disabled = !$('#registerProvince')?.value;
+    $('#registerHospitalSuggestions')?.classList.add('hidden');
+    $('#registerHospitalSelected')?.classList.add('hidden');
+    $('#registerNewHospitalFields')?.classList.add('hidden');
+    $('#registerExistingHospitalPhone')?.classList.add('hidden');
+    $('#registerHospitalPhoneProposalLabel')?.classList.add('hidden');
+    if ($('#registerNewHospitalName')) $('#registerNewHospitalName').value = '';
+    if ($('#registerHospitalPhoneProposed')) $('#registerHospitalPhoneProposed').value = '';
+    if ($('#registerExistingHospitalPhoneProposed')) $('#registerExistingHospitalPhoneProposed').value = '';
+  }
+
+  function registrationHospitalsForProvince() {
+    const province = $('#registerProvince')?.value || '';
+    return state.registrationHospitals.filter(hospital => hospital.province === province && hospital.is_active !== false);
+  }
+
+  function renderRegistrationHospitalSuggestions() {
+    const box = $('#registerHospitalSuggestions');
+    const input = $('#registerHospitalSearch');
+    if (!box || !input || input.disabled || $('#registerHospitalMode')?.value === 'new') return;
+    const province = $('#registerProvince')?.value || '';
+    const query = normalizeHospitalName(input.value);
+    if (!query) {
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      return;
+    }
+    if (state.registrationOptionsProvince !== province) {
+      box.innerHTML = '<div class="autocomplete-empty">กำลังโหลดรายชื่อโรงพยาบาลในจังหวัดนี้...</div>';
+      box.classList.remove('hidden');
+      loadRegistrationOptions(province).catch(error => toast('โหลดรายชื่อโรงพยาบาลไม่สำเร็จ', U.friendlyError(error), 'error'));
+      return;
+    }
+    const allMatches = registrationHospitalsForProvince()
+      .filter(hospital => normalizeHospitalName(hospital.name).includes(query));
+    const matches = allMatches.slice(0, 8);
+    box.innerHTML = matches.length
+      ? `${matches.map(hospital => `<button type="button" class="autocomplete-option" data-register-hospital-id="${hospital.id}" role="option"><b>${U.esc(hospital.name)}</b><span>${U.esc(hospital.phone || 'ยังไม่มีเบอร์โทรในระบบ')}</span></button>`).join('')}${allMatches.length > matches.length ? `<div class="autocomplete-more">พบ ${allMatches.length} แห่ง · แสดง 8 รายการแรก กรุณาพิมพ์เพิ่มเพื่อกรองให้แคบลง</div>` : ''}`
+      : `<div class="autocomplete-empty">ไม่พบใน Master ของจังหวัดนี้<br><small>กด “ไม่พบโรงพยาบาลของฉัน” เพื่อเสนอชื่อใหม่</small></div>`;
+    box.classList.remove('hidden');
+  }
+
+  function selectRegistrationHospital(hospital) {
+    if (!hospital) return;
+    $('#registerHospitalId').value = hospital.id;
+    $('#registerHospitalMode').value = 'existing';
+    $('#registerHospitalSearch').value = hospital.name;
+    $('#registerHospitalSuggestions').classList.add('hidden');
+    $('#registerNewHospitalFields').classList.add('hidden');
+    const selected = $('#registerHospitalSelected');
+    selected.innerHTML = `<b>เลือกแล้ว: ${U.esc(hospital.name)}</b><span>${U.esc(hospital.province || '')}</span>`;
+    selected.classList.remove('hidden');
+    const phoneBox = $('#registerExistingHospitalPhone');
+    $('#registerHospitalPhoneCurrent').textContent = hospital.phone
+      ? `เบอร์โทรโรงพยาบาลใน Master: ${hospital.phone}`
+      : 'โรงพยาบาลนี้ยังไม่มีเบอร์โทรใน Master';
+    phoneBox.classList.remove('hidden');
+    $('#registerHospitalPhoneProposalLabel').classList.add('hidden');
+    $('#registerExistingHospitalPhoneProposed').value = '';
+  }
+
+  function startNewHospitalRequest() {
+    const province = $('#registerProvince').value;
+    if (!province) {
+      toast('กรุณาเลือกจังหวัดก่อน', '', 'error');
+      return;
+    }
+    const typed = $('#registerHospitalSearch').value.trim();
+    $('#registerHospitalMode').value = 'new';
+    $('#registerHospitalId').value = '';
+    $('#registerHospitalSuggestions').classList.add('hidden');
+    $('#registerHospitalSelected').classList.add('hidden');
+    $('#registerExistingHospitalPhone').classList.add('hidden');
+    $('#registerNewHospitalFields').classList.remove('hidden');
+    $('#registerNewHospitalName').value = typed;
+    $('#registerNewHospitalName').focus();
+  }
+
+  function handleRegistrationProvinceChange() {
+    resetRegistrationHospital(false);
+    state.registrationHospitals = [];
+    state.registrationOptionsProvince = '';
+    const province = $('#registerProvince').value;
+    const enabled = Boolean(province);
+    $('#registerHospitalSearch').disabled = !enabled;
+    $('#registerNewHospitalBtn').disabled = !enabled;
+    if (enabled) {
+      $('#registerHospitalSearch').placeholder = 'กำลังโหลดรายชื่อโรงพยาบาลในจังหวัดนี้...';
+      $('#registerHospitalSearch').focus();
+      loadRegistrationOptions(province).catch(error => toast('โหลดรายชื่อโรงพยาบาลไม่สำเร็จ', U.friendlyError(error), 'error'));
+    }
+  }
 
   function showScreen(name) {
     Object.entries(screens).forEach(([key, el]) => el.classList.toggle('hidden', key !== name));
@@ -90,6 +305,7 @@
 
   async function init() {
     bindStaticEvents();
+    initializeRegistrationForm();
     registerPwa();
     updateConnectionState();
     if (!configIsValid()) {
@@ -110,6 +326,7 @@
       state.initialized = true;
       return;
     }
+
 
     let passwordSetupCompleted = false;
     try {
@@ -953,44 +1170,179 @@
       if (request.email_last_error) return `<span class="badge badge-rejected">ยังไม่ส่ง</span><br><small>${U.esc(U.friendlyError(request.email_last_error))}</small>`;
       return '<span class="badge badge-pending">ยังไม่ส่ง</span>';
     };
-    const row = request => `<tr><td><b>${U.esc(request.full_name)}</b><br><small>${U.esc(request.email)}</small></td><td>${U.esc(request.hospital_name)}</td><td>${U.esc(request.phone)}</td><td><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span><br><small>${U.fmtDateTime(request.requested_at)}</small></td><td>${mailState(request)}</td><td>${actions(request)}</td></tr>`;
-    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>คำขอเปิดบัญชี ${data.length} รายการ</h2><p>ตรวจสอบข้อมูลก่อนสร้างบัญชีผู้ใช้และส่งลิงก์ตั้งรหัสผ่านทางอีเมล</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้สมัคร</th><th>โรงพยาบาล</th><th>โทรศัพท์</th><th>สถานะ</th><th>อีเมลตั้งรหัสผ่าน</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(request => `<div class="mobile-data-card"><b>${U.esc(request.full_name)}</b><span>${U.esc(request.email)}</span><span>${U.esc(request.hospital_name)} · ${U.esc(request.phone)}</span><div><small>อีเมลตั้งรหัสผ่าน</small>${mailState(request)}</div><div class="inline-actions"><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span>${actions(request)}</div></div>`).join('')}</div>` : emptyState('ยังไม่มีคำขอเปิดบัญชี','คำขอใหม่จะปรากฏที่หน้านี้')}</div></section>`;
+    const requestHospitalState = request => {
+      const linked = state.masters.hospitals.find(hospital => hospital.id === request.requested_hospital_id);
+      const exact = linked || state.masters.hospitals.find(hospital =>
+        (!request.province || hospital.province === request.province)
+        && normalizeHospitalName(hospital.name) === normalizeHospitalName(request.hospital_name)
+      );
+      if (exact) return `<span class="badge badge-active">มีในระบบ</span><br><small>${U.esc(exact.name)}</small>`;
+      return '<span class="badge badge-pending">ยังไม่มีในระบบ</span>';
+    };
+    const row = request => `<tr><td><b>${U.esc(request.full_name)}</b><br><small>${U.esc(request.email)}</small></td><td><b>${U.esc(request.hospital_name)}</b><br><small>${U.esc(request.province || 'ยังไม่ระบุจังหวัด')}</small></td><td>${U.esc(request.phone)}${request.proposed_hospital_phone ? `<br><small>เบอร์ รพ. ที่เสนอ: ${U.esc(request.proposed_hospital_phone)}</small>` : ''}</td><td>${requestHospitalState(request)}</td><td><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span><br><small>${U.fmtDateTime(request.requested_at)}</small></td><td>${mailState(request)}</td><td>${actions(request)}</td></tr>`;
+    host.innerHTML = `<section class="panel"><div class="panel-header"><div><h2>คำขอเปิดบัญชี ${data.length} รายการ</h2><p>ตรวจชื่อโรงพยาบาลซ้ำ แล้วเพิ่มโรงพยาบาลและอนุมัติบัญชีได้ในหน้าต่างเดียว</p></div></div><div class="panel-body">${data.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้สมัคร</th><th>โรงพยาบาล/จังหวัด</th><th>โทรศัพท์</th><th>สถานะโรงพยาบาล</th><th>สถานะคำขอ</th><th>อีเมลตั้งรหัสผ่าน</th><th></th></tr></thead><tbody>${data.map(row).join('')}</tbody></table></div><div class="mobile-cards">${data.map(request => `<div class="mobile-data-card"><b>${U.esc(request.full_name)}</b><span>${U.esc(request.email)}</span><span>${U.esc(request.hospital_name)} · ${U.esc(request.province || 'ยังไม่ระบุจังหวัด')}</span><div>${requestHospitalState(request)}</div><div><small>อีเมลตั้งรหัสผ่าน</small>${mailState(request)}</div><div class="inline-actions"><span class="badge badge-${request.status}">${U.esc(U.statusLabel[request.status] || request.status)}</span>${actions(request)}</div></div>`).join('')}</div>` : emptyState('ยังไม่มีคำขอเปิดบัญชี','คำขอใหม่จะปรากฏที่หน้านี้')}</div></section>`;
     host.dataset.requests = JSON.stringify(data);
   }
 
   function openAccountRequest(request) {
     if (!request) return;
+    const initialProvince = request.province || '';
+    const provinceField = initialProvince
+      ? `<label>จังหวัด<input id="requestProvinceDisplay" value="${U.esc(initialProvince)}" readonly><input id="requestProvince" type="hidden" value="${U.esc(initialProvince)}"></label>`
+      : `<label>จังหวัด<select id="requestProvince" required>${provinceOptions('')}</select></label>`;
+
     openModal('ตรวจสอบคำขอเปิดบัญชี', request.email, `
       <form id="accountRequestForm">
+        <div class="request-hospital-summary">
+          <div><span>โรงพยาบาลที่ผู้สมัครแจ้ง</span><b>${U.esc(request.hospital_name || '-')}</b></div>
+          <div><span>จังหวัด</span><b>${U.esc(initialProvince || 'คำขอเดิมยังไม่ระบุ')}</b></div>
+          <div><span>เบอร์โทรโรงพยาบาลที่เสนอ</span><b>${U.esc(request.proposed_hospital_phone || 'ไม่ได้เสนอ')}</b></div>
+        </div>
         <label>ชื่อ–นามสกุล<input id="requestFullName" value="${U.esc(request.full_name || '')}" required maxlength="120"></label>
-        <label>เบอร์โทร<input id="requestPhone" value="${U.esc(request.phone || '')}" required maxlength="30"></label>
-        <label>โรงพยาบาลที่ผู้สมัครแจ้ง<input value="${U.esc(request.hospital_name || '')}" readonly></label>
+        <label>เบอร์โทรติดต่อผู้สมัคร/หน่วยงาน<input id="requestPhone" value="${U.esc(request.phone || '')}" required maxlength="30"></label>
+        ${provinceField}
         <label>ตำแหน่ง/หน่วยงาน<input value="${U.esc(request.position_title || '')}" readonly></label>
-        <label>กำหนดโรงพยาบาลในระบบ<select id="requestHospital" required><option value="">เลือกโรงพยาบาล</option>${state.masters.hospitals.filter(h => h.is_active).map(h => `<option value="${h.id}">${U.esc(h.name)}</option>`).join('')}</select></label>
+        <div id="requestHospitalResolution"></div>
         <label>สิทธิ์การใช้งาน<select id="requestRole"><option value="user">ผู้ใช้งาน</option><option value="system_admin">ผู้ดูแลระบบ</option></select></label>
         <label>หมายเหตุของผู้ดูแล<textarea id="requestAdminNote" maxlength="500">${U.esc(request.admin_note || '')}</textarea></label>
-        <div class="notice warning"><b>เมื่อกดอนุมัติ</b><p>ระบบจะสร้างบัญชีแบบยืนยันอีเมลแล้ว แต่ยังไม่มีรหัสผ่าน จากนั้นส่งลิงก์ BENT ที่ไม่มีการหมดอายุตามเวลาให้ผู้สมัครตั้งรหัสผ่านเอง</p></div>
+        <div class="notice warning"><b>เมื่อกดอนุมัติ</b><p>ระบบจะเพิ่มโรงพยาบาลใหม่เมื่อจำเป็น ผูกผู้ใช้กับโรงพยาบาล สร้างบัญชี และส่งลิงก์ตั้งรหัสผ่านในขั้นตอนเดียว</p></div>
         <div class="modal-actions">
           <button id="rejectRequestBtn" type="button" class="btn btn-danger">ไม่อนุมัติ</button>
           <button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button>
-          <button id="approveRequestBtn" type="submit" class="btn btn-primary">อนุมัติและส่งลิงก์</button>
+          <button id="approveRequestBtn" type="submit" class="btn btn-primary">ตรวจสอบตัวเลือกโรงพยาบาล</button>
         </div>
       </form>`);
+
+    const resolutionRoot = $('#requestHospitalResolution');
+    const approvalButton = $('#approveRequestBtn');
+
+    function currentProvince() {
+      return $('#requestProvince')?.value || '';
+    }
+
+    function renderHospitalResolution() {
+      const province = currentProvince();
+      const inProvince = state.masters.hospitals
+        .filter(hospital => !province || hospital.province === province)
+        .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+      const requestedLinked = inProvince.find(hospital => hospital.id === request.requested_hospital_id);
+      const exact = requestedLinked || inProvince.find(hospital => normalizeHospitalName(hospital.name) === normalizeHospitalName(request.hospital_name));
+      const candidates = similarHospitals(request.hospital_name, province, true).filter(item => !exact || item.hospital.id !== exact.id).slice(0, 5);
+      const activeHospitals = inProvince.filter(hospital => hospital.is_active);
+      const suggestedExistingId = (exact && exact.is_active ? exact.id : '')
+        || (candidates.find(item => item.hospital.is_active)?.hospital.id || '')
+        || '';
+
+      if (!province) {
+        resolutionRoot.innerHTML = `<div class="notice warning"><b>กรุณาเลือกจังหวัด</b><p>คำขอรุ่นเดิมไม่มีจังหวัด จึงต้องกำหนดจังหวัดก่อนตรวจชื่อโรงพยาบาล</p></div>`;
+        approvalButton.textContent = 'กรุณาเลือกจังหวัด';
+        approvalButton.disabled = true;
+        return;
+      }
+
+      const existingOptions = `<option value="">-- เลือกโรงพยาบาลที่มีอยู่ --</option>${activeHospitals.map(hospital => `<option value="${hospital.id}" ${hospital.id === suggestedExistingId ? 'selected' : ''}>${U.esc(hospital.name)}</option>`).join('')}`;
+      let content = '';
+
+      if (exact && exact.is_active) {
+        content = `
+          <div class="hospital-status-card found"><span>สถานะ</span><b>พบโรงพยาบาลนี้ในระบบแล้ว</b><p>${U.esc(exact.name)} · ${U.esc(exact.province || '-')}</p></div>
+          <input type="hidden" name="hospitalResolution" value="existing">
+          <input id="requestExistingHospital" type="hidden" value="${exact.id}">
+          <div class="notice success"><b>ระบบจะใช้โรงพยาบาลที่มีอยู่</b><p>เมื่ออนุมัติ ผู้ใช้จะถูกผูกกับ ${U.esc(exact.name)} ทันที และจะไม่สร้าง Master ซ้ำ</p></div>`;
+      } else {
+        const exactInactive = exact && !exact.is_active;
+        const candidateHtml = candidates.length
+          ? `<div class="notice warning"><b>พบโรงพยาบาลที่อาจเป็นแห่งเดียวกัน</b><p>กรุณาเลือกว่าจะใช้โรงพยาบาลเดิม หรือยืนยันว่าเป็นโรงพยาบาลใหม่</p><div class="similar-hospital-list">${candidates.map(item => `<div><b>${U.esc(item.hospital.name)}</b><span>${U.esc(item.hospital.province || '-')} · ความใกล้เคียง ${Math.round(item.score * 100)}%${item.hospital.is_active ? '' : ' · ปิดใช้งาน'}</span></div>`).join('')}</div></div>`
+          : '';
+        const inactiveWarning = exactInactive
+          ? `<div class="notice danger"><b>พบชื่อเดียวกัน แต่โรงพยาบาลถูกปิดใช้งาน</b><p>${U.esc(exact.name)} ต้องเปิดใช้งานจากเมนูโรงพยาบาลก่อน จึงจะผูกบัญชีได้ และระบบจะไม่สร้างชื่อซ้ำ</p></div>`
+          : '';
+        const defaultResolution = (exactInactive || candidates.length) ? '' : 'new';
+        content = `
+          <div class="hospital-status-card missing"><span>สถานะ</span><b>${exactInactive ? 'มีชื่อเดิมแต่ปิดใช้งาน' : 'ยังไม่มีในระบบ'}</b><p>${U.esc(request.hospital_name)} · ${U.esc(province)}</p></div>
+          ${inactiveWarning}${candidateHtml}
+          <div class="hospital-resolution-options">
+            <label class="resolution-choice"><input type="radio" name="hospitalResolution" value="existing"><span><b>ใช้โรงพยาบาลที่มีอยู่</b><small>เลือกจาก Master ในจังหวัดเดียวกัน</small></span></label>
+            <label>โรงพยาบาลในระบบ<select id="requestExistingHospital">${existingOptions}</select></label>
+            <label class="resolution-choice ${exactInactive ? 'disabled' : ''}"><input type="radio" name="hospitalResolution" value="new" ${defaultResolution === 'new' ? 'checked' : ''} ${exactInactive ? 'disabled' : ''}><span><b>ยืนยันว่าเป็นโรงพยาบาลใหม่</b><small>${exactInactive ? 'เปิดใช้งานชื่อเดิมก่อน ระบบไม่อนุญาตให้สร้างชื่อซ้ำ' : 'ระบบจะเพิ่ม Master และอนุมัติบัญชีพร้อมกัน'}</small></span></label>
+            <div id="newHospitalApprovalFields" class="proposed-hospital-box ${defaultResolution === 'new' ? '' : 'hidden'}">
+              <label>ชื่อโรงพยาบาลตามชื่อทางการ<input id="requestNewHospitalName" value="${U.esc(request.hospital_name || '')}" maxlength="180"></label>
+              <label>เบอร์โทรหลักของโรงพยาบาล<input id="requestNewHospitalPhone" value="${U.esc(request.proposed_hospital_phone || '')}" maxlength="30" placeholder="ถ้ามี"></label>
+            </div>
+          </div>`;
+      }
+
+      resolutionRoot.innerHTML = content;
+      updateApprovalButton();
+
+      resolutionRoot.querySelectorAll('input[name="hospitalResolution"]').forEach(input => input.addEventListener('change', () => {
+        const isNew = resolutionRoot.querySelector('input[name="hospitalResolution"]:checked')?.value === 'new';
+        $('#newHospitalApprovalFields')?.classList.toggle('hidden', !isNew);
+        updateApprovalButton();
+      }));
+      $('#requestExistingHospital')?.addEventListener('change', () => {
+        const existingRadio = resolutionRoot.querySelector('input[name="hospitalResolution"][value="existing"]');
+        if (existingRadio && $('#requestExistingHospital').value) existingRadio.checked = true;
+        $('#newHospitalApprovalFields')?.classList.add('hidden');
+        updateApprovalButton();
+      });
+    }
+
+    function selectedResolution() {
+      const hidden = resolutionRoot.querySelector('input[type="hidden"][name="hospitalResolution"]');
+      if (hidden) return hidden.value;
+      return resolutionRoot.querySelector('input[name="hospitalResolution"]:checked')?.value || '';
+    }
+
+    function updateApprovalButton() {
+      const resolution = selectedResolution();
+      if (resolution === 'existing') {
+        approvalButton.textContent = 'ใช้โรงพยาบาลที่มีอยู่และอนุมัติบัญชี';
+        approvalButton.disabled = !$('#requestExistingHospital')?.value;
+      } else if (resolution === 'new') {
+        approvalButton.textContent = 'เพิ่มโรงพยาบาลและอนุมัติบัญชี';
+        approvalButton.disabled = false;
+      } else {
+        approvalButton.textContent = 'กรุณาเลือกวิธีจัดการโรงพยาบาล';
+        approvalButton.disabled = true;
+      }
+    }
+
+    if (!initialProvince) $('#requestProvince').addEventListener('change', renderHospitalResolution);
+    renderHospitalResolution();
+
     $('#accountRequestForm').addEventListener('submit', async event => {
       event.preventDefault(); const btn = $('#approveRequestBtn');
       try {
-        const hospitalId = $('#requestHospital').value;
-        if (!hospitalId) throw new Error('กรุณาเลือกโรงพยาบาล');
-        setButtonBusy(btn, true, 'กำลังสร้างบัญชี...');
+        const province = currentProvince();
+        const resolution = selectedResolution();
+        if (!province) throw new Error('INVALID_PROVINCE');
+        if (!resolution) throw new Error('HOSPITAL_RESOLUTION_REQUIRED');
+
+        const hospitalId = resolution === 'existing' ? ($('#requestExistingHospital')?.value || '') : '';
+        const newHospitalName = resolution === 'new' ? ($('#requestNewHospitalName')?.value.trim() || request.hospital_name) : '';
+        const newHospitalPhone = resolution === 'new' ? ($('#requestNewHospitalPhone')?.value.trim() || '') : '';
+        if (resolution === 'existing' && !hospitalId) throw new Error('HOSPITAL_SELECTION_REQUIRED');
+        if (resolution === 'new' && newHospitalName.length < 2) throw new Error('INVALID_HOSPITAL');
+
+        setButtonBusy(btn, true, resolution === 'new' ? 'กำลังเพิ่มโรงพยาบาลและสร้างบัญชี...' : 'กำลังสร้างบัญชี...');
         const result = await I.call({
           action: 'approve_account_request', access_token: state.session.access_token,
-          request_id: request.id, hospital_id: hospitalId, role: $('#requestRole').value,
+          request_id: request.id,
+          resolution,
+          hospital_id: hospitalId || null,
+          province,
+          new_hospital_name: newHospitalName || null,
+          new_hospital_phone: newHospitalPhone || null,
+          confirm_new_hospital: resolution === 'new',
+          role: $('#requestRole').value,
           full_name: $('#requestFullName').value.trim(), phone: $('#requestPhone').value.trim(),
           admin_note: $('#requestAdminNote').value.trim()
         });
         closeModal();
+        await loadMasters();
         const deliveryMessage = result.email_sent
-          ? 'ส่งลิงก์ตั้งรหัสผ่านแล้ว'
+          ? `${result.hospital_created ? 'เพิ่มโรงพยาบาลและสร้างบัญชีแล้ว' : 'ผูกบัญชีกับโรงพยาบาลเดิมแล้ว'} พร้อมส่งลิงก์ตั้งรหัสผ่าน`
           : `สร้างบัญชีแล้ว แต่อีเมลยังไม่ถูกส่ง: ${U.friendlyError(result.email_error || 'ไม่ทราบสาเหตุ')} หลังแก้ไขแล้วให้กด “ส่งลิงก์ใหม่”`;
         toast('อนุมัติบัญชีแล้ว', deliveryMessage, result.email_sent ? 'success' : 'error', 11000);
         await loadAdminTab('requests');
@@ -1091,14 +1443,14 @@
     const rows = state.masters.hospitals;
     host.innerHTML = `
       <section class="panel"><div class="panel-header"><div><h2>โรงพยาบาล</h2><p>เพิ่มหรือเปิด/ปิดการใช้งาน โดยไม่ลบประวัติเดิม</p></div></div><div class="panel-body">
-        <form id="hospitalForm" class="master-row-form"><label>ชื่อโรงพยาบาล<input id="hospitalName" required maxlength="180"></label><label>จังหวัด<input id="hospitalProvince" maxlength="100"></label><label>โทรศัพท์<input id="hospitalPhone" maxlength="30"></label><label>สถานะ<select id="hospitalActive"><option value="true">ใช้งาน</option><option value="false">ปิดใช้งาน</option></select></label><button class="btn btn-primary" type="submit">เพิ่มโรงพยาบาล</button></form>
-        <div class="table-wrap" style="margin-top:18px"><table class="data-table"><thead><tr><th>โรงพยาบาล</th><th>จังหวัด</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(h => `<tr><td>${U.esc(h.name)}</td><td>${U.esc(h.province || '-')}</td><td><span class="badge badge-${h.is_active ? 'active':'inactive'}">${h.is_active ? 'ใช้งาน':'ปิดใช้งาน'}</span></td><td><button class="btn btn-soft" data-action="edit-hospital" data-id="${h.id}">แก้ไข</button></td></tr>`).join('')}</tbody></table></div>
+        <form id="hospitalForm" class="master-row-form"><label>ชื่อโรงพยาบาล<input id="hospitalName" required maxlength="180"></label><label>จังหวัด<select id="hospitalProvince" required>${provinceOptions('')}</select></label><label>โทรศัพท์<input id="hospitalPhone" maxlength="30"></label><label>สถานะ<select id="hospitalActive"><option value="true">ใช้งาน</option><option value="false">ปิดใช้งาน</option></select></label><button class="btn btn-primary" type="submit">เพิ่มโรงพยาบาล</button></form>
+        <div class="table-wrap" style="margin-top:18px"><table class="data-table"><thead><tr><th>โรงพยาบาล</th><th>จังหวัด</th><th>โทรศัพท์</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(h => `<tr><td>${U.esc(h.name)}</td><td>${U.esc(h.province || '-')}</td><td>${U.esc(h.phone || '-')}</td><td><span class="badge badge-${h.is_active ? 'active':'inactive'}">${h.is_active ? 'ใช้งาน':'ปิดใช้งาน'}</span></td><td><button class="btn btn-soft" data-action="edit-hospital" data-id="${h.id}">แก้ไข</button></td></tr>`).join('')}</tbody></table></div>
       </div></section>`;
     $('#hospitalForm').addEventListener('submit', async event => {
       event.preventDefault(); const btn = event.submitter;
       try {
         setButtonBusy(btn, true);
-        const { error } = await state.supabase.from('bent_hospitals').insert({ name: $('#hospitalName').value.trim(), province: $('#hospitalProvince').value.trim() || null, phone: $('#hospitalPhone').value.trim() || null, is_active: $('#hospitalActive').value === 'true' });
+        const { error } = await state.supabase.from('bent_hospitals').insert({ name: $('#hospitalName').value.trim(), province: $('#hospitalProvince').value || null, phone: $('#hospitalPhone').value.trim() || null, is_active: $('#hospitalActive').value === 'true' });
         if (error) throw error;
         await loadMasters(); toast('เพิ่มโรงพยาบาลแล้ว', '', 'success'); adminHospitals(host);
       } catch (error) { toast('เพิ่มไม่สำเร็จ', U.friendlyError(error), 'error'); }
@@ -1107,12 +1459,12 @@
   }
 
   function openHospitalEdit(hospital) {
-    openModal('แก้ไขโรงพยาบาล', 'การปิดใช้งานจะไม่ลบข้อมูลประกาศเก่า', `<form id="editHospitalForm"><label>ชื่อ<input id="editHospitalName" value="${U.esc(hospital.name)}" required></label><label>จังหวัด<input id="editHospitalProvince" value="${U.esc(hospital.province || '')}"></label><label>โทรศัพท์<input id="editHospitalPhone" value="${U.esc(hospital.phone || '')}"></label><label>สถานะ<select id="editHospitalActive"><option value="true" ${hospital.is_active ? 'selected':''}>ใช้งาน</option><option value="false" ${!hospital.is_active ? 'selected':''}>ปิดใช้งาน</option></select></label><div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="saveHospitalEdit" class="btn btn-primary">บันทึก</button></div></form>`);
+    openModal('แก้ไขโรงพยาบาล', 'การปิดใช้งานจะไม่ลบข้อมูลประกาศเก่า', `<form id="editHospitalForm"><label>ชื่อ<input id="editHospitalName" value="${U.esc(hospital.name)}" required></label><label>จังหวัด<select id="editHospitalProvince" required>${provinceOptions(hospital.province || '')}</select></label><label>โทรศัพท์<input id="editHospitalPhone" value="${U.esc(hospital.phone || '')}"></label><label>สถานะ<select id="editHospitalActive"><option value="true" ${hospital.is_active ? 'selected':''}>ใช้งาน</option><option value="false" ${!hospital.is_active ? 'selected':''}>ปิดใช้งาน</option></select></label><div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="saveHospitalEdit" class="btn btn-primary">บันทึก</button></div></form>`);
     $('#editHospitalForm').addEventListener('submit', async event => {
       event.preventDefault(); const btn = $('#saveHospitalEdit');
       try {
         setButtonBusy(btn, true);
-        const { error } = await state.supabase.from('bent_hospitals').update({ name: $('#editHospitalName').value.trim(), province: $('#editHospitalProvince').value.trim() || null, phone: $('#editHospitalPhone').value.trim() || null, is_active: $('#editHospitalActive').value === 'true' }).eq('id', hospital.id);
+        const { error } = await state.supabase.from('bent_hospitals').update({ name: $('#editHospitalName').value.trim(), province: $('#editHospitalProvince').value || null, phone: $('#editHospitalPhone').value.trim() || null, is_active: $('#editHospitalActive').value === 'true' }).eq('id', hospital.id);
         if (error) throw error;
         await loadMasters(); closeModal(); toast('บันทึกแล้ว', '', 'success'); await loadAdminTab('hospitals');
       } catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
@@ -1223,6 +1575,26 @@
     }));
     $('#loginForm').addEventListener('submit', login);
     $('#registerForm').addEventListener('submit', register);
+    $('#registerProvince').addEventListener('change', handleRegistrationProvinceChange);
+    $('#registerHospitalSearch').addEventListener('input', () => {
+      $('#registerHospitalId').value = '';
+      $('#registerHospitalMode').value = '';
+      $('#registerHospitalSelected').classList.add('hidden');
+      $('#registerExistingHospitalPhone').classList.add('hidden');
+      $('#registerNewHospitalFields').classList.add('hidden');
+      renderRegistrationHospitalSuggestions();
+    });
+    $('#registerHospitalSearch').addEventListener('focus', renderRegistrationHospitalSuggestions);
+    $('#registerHospitalSuggestions').addEventListener('click', event => {
+      const button = event.target.closest('[data-register-hospital-id]');
+      if (!button) return;
+      selectRegistrationHospital(state.registrationHospitals.find(hospital => hospital.id === button.dataset.registerHospitalId));
+    });
+    $('#registerNewHospitalBtn').addEventListener('click', startNewHospitalRequest);
+    $('#registerHospitalPhoneBtn').addEventListener('click', () => {
+      $('#registerHospitalPhoneProposalLabel').classList.remove('hidden');
+      $('#registerExistingHospitalPhoneProposed').focus();
+    });
     $('#passwordSetupForm').addEventListener('submit', saveSetupPassword);
     $('#backToLoginBtn').addEventListener('click', returnToLogin);
     $('#forgotPasswordBtn').addEventListener('click', forgotPassword);
@@ -1259,18 +1631,57 @@
   async function register(event) {
     event.preventDefault(); const btn = event.submitter;
     try {
+      const province = $('#registerProvince').value;
+      let mode = $('#registerHospitalMode').value;
+      let hospitalId = $('#registerHospitalId').value;
+      let hospitalName = '';
+      let proposedHospitalPhone = '';
+
+      if (!province) throw new Error('INVALID_PROVINCE');
+
+      if (!mode) {
+        const typed = $('#registerHospitalSearch').value.trim();
+        const exact = registrationHospitalsForProvince().find(hospital => normalizeHospitalName(hospital.name) === normalizeHospitalName(typed));
+        if (exact) {
+          selectRegistrationHospital(exact);
+          mode = 'existing';
+          hospitalId = exact.id;
+        } else {
+          throw new Error('HOSPITAL_SELECTION_REQUIRED');
+        }
+      }
+
+      if (mode === 'existing') {
+        const selected = state.registrationHospitals.find(hospital => hospital.id === hospitalId && hospital.province === province);
+        if (!selected) throw new Error('HOSPITAL_SELECTION_REQUIRED');
+        hospitalName = selected.name;
+        proposedHospitalPhone = $('#registerExistingHospitalPhoneProposed').value.trim();
+      } else if (mode === 'new') {
+        hospitalName = $('#registerNewHospitalName').value.trim();
+        proposedHospitalPhone = $('#registerHospitalPhoneProposed').value.trim();
+        if (hospitalName.length < 2) throw new Error('INVALID_HOSPITAL');
+        if (proposedHospitalPhone.length < 3) throw new Error('HOSPITAL_PHONE_REQUIRED');
+      } else {
+        throw new Error('HOSPITAL_SELECTION_REQUIRED');
+      }
+
       setButtonBusy(btn, true, 'กำลังส่งคำขอ...');
       await I.call({
         action: 'submit_account_request',
         full_name: $('#registerName').value.trim(),
-        hospital_name: $('#registerHospital').value.trim(),
+        province,
+        hospital_selection_mode: mode,
+        requested_hospital_id: hospitalId || null,
+        hospital_name: hospitalName,
+        proposed_hospital_phone: proposedHospitalPhone || null,
         phone: $('#registerPhone').value.trim(),
         email: $('#registerEmail').value.trim(),
         position_title: $('#registerPosition').value.trim(),
         website: $('#registerWebsite').value
       });
-      openModal('ส่งคำขอแล้ว', 'ยังไม่มีการสร้างบัญชีในขั้นตอนนี้', `<ol><li>ผู้ดูแลระบบตรวจสอบข้อมูลและโรงพยาบาล</li><li>เมื่ออนุมัติ ระบบจะส่งลิงก์ตั้งรหัสผ่านไปยังอีเมลที่ระบุ</li><li>เปิดลิงก์ ตั้งรหัสผ่าน แล้วเข้าสู่ระบบ</li></ol><div class="notice warning"><b>ลิงก์ไม่มีการหมดอายุตามเวลา</b><p>ลิงก์ใช้ได้หนึ่งครั้ง และลิงก์เดิมจะถูกยกเลิกเมื่อมีการออกลิงก์ใหม่</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>รับทราบ</button></div>`);
+      openModal('ส่งคำขอแล้ว', 'โรงพยาบาลใหม่ยังไม่ถูกเพิ่มจนกว่าผู้ดูแลจะอนุมัติ', `<ol><li>ผู้ดูแลระบบตรวจสอบข้อมูล จังหวัด และชื่อโรงพยาบาลซ้ำ</li><li>หากเป็นโรงพยาบาลใหม่ ผู้ดูแลจะเพิ่มโรงพยาบาลและสร้างบัญชีในขั้นตอนเดียว</li><li>ระบบส่งลิงก์ตั้งรหัสผ่านไปยังอีเมลที่ระบุ</li></ol><div class="notice warning"><b>ลิงก์ไม่มีการหมดอายุตามเวลา</b><p>ลิงก์ใช้ได้หนึ่งครั้ง และลิงก์เดิมจะถูกยกเลิกเมื่อมีการออกลิงก์ใหม่</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>รับทราบ</button></div>`);
       event.target.reset();
+      initializeRegistrationForm();
     } catch (error) { toast('ส่งคำขอไม่สำเร็จ', U.friendlyError(error), 'error'); }
     finally { setButtonBusy(btn, false); }
   }
@@ -1351,7 +1762,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.2.2').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.3.1').catch(() => {}));
     }
   }
 
