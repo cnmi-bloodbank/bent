@@ -506,20 +506,78 @@
       main.innerHTML = `<div class="notice danger"><b>โหลดข้อมูลไม่สำเร็จ</b><p>${U.esc(U.friendlyError(error))}</p><button class="btn btn-primary" data-action="reload-app">ลองอีกครั้ง</button></div>`;
     }
   }
+  async function fetchHospitalPages(configureQuery = query => query) {
+    const pageSize = 500;
+    const rows = [];
+    let from = 0;
+
+    while (true) {
+      let query = state.supabase
+        .from('bent_hospitals')
+        .select('*')
+        .order('name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, from + pageSize - 1);
+      query = configureQuery(query);
+      const { data, error } = await query;
+      if (error) throw error;
+      const page = data || [];
+      rows.push(...page);
+      if (page.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return rows;
+  }
+
+  function mergeHospitalsIntoMaster(hospitals) {
+    const byId = new Map(state.masters.hospitals.map(hospital => [hospital.id, hospital]));
+    (hospitals || []).forEach(hospital => byId.set(hospital.id, hospital));
+    state.masters.hospitals = Array.from(byId.values())
+      .sort((a, b) => a.name.localeCompare(b.name, 'th') || String(a.id).localeCompare(String(b.id)));
+  }
+
+  async function refreshHospitalsForAccountRequest(request) {
+    const province = String(request?.province || '').trim();
+    const requestedName = String(request?.hospital_name || '').trim();
+    const requestedId = String(request?.requested_hospital_id || '').trim();
+    const tasks = [];
+
+    if (province) tasks.push(fetchHospitalPages(query => query.eq('province', province)));
+    if (requestedId && !state.masters.hospitals.some(hospital => hospital.id === requestedId)) {
+      tasks.push(state.supabase.from('bent_hospitals').select('*').eq('id', requestedId).limit(1));
+    }
+    if (requestedName) {
+      tasks.push(state.supabase.from('bent_hospitals').select('*').ilike('name', requestedName).limit(20));
+    }
+
+    const results = await Promise.all(tasks);
+    const rows = [];
+    results.forEach(result => {
+      if (Array.isArray(result)) {
+        rows.push(...result);
+        return;
+      }
+      if (result.error) throw result.error;
+      rows.push(...(result.data || []));
+    });
+    mergeHospitalsIntoMaster(rows);
+  }
+
   async function loadMasters() {
     const [components, antigens, sources, hospitals] = await Promise.all([
       state.supabase.from('bent_components').select('*').order('sort_order'),
       state.supabase.from('bent_antigens').select('*').order('sort_order'),
       state.supabase.from('bent_blood_sources').select('*').order('sort_order'),
-      state.supabase.from('bent_hospitals').select('*').order('name')
+      fetchHospitalPages()
     ]);
-    for (const result of [components, antigens, sources, hospitals]) {
+    for (const result of [components, antigens, sources]) {
       if (result.error) throw result.error;
     }
     state.masters.components = components.data || [];
     state.masters.antigens = antigens.data || [];
     state.masters.sources = sources.data || [];
-    state.masters.hospitals = hospitals.data || [];
+    state.masters.hospitals = hospitals;
   }
 
   async function loadAnnouncements() {
@@ -1353,8 +1411,13 @@
     bindAdminFilterControls('requests', renderRows);
     renderRows();
   }
-  function openAccountRequest(request) {
+  async function openAccountRequest(request) {
     if (!request) return;
+    try {
+      await refreshHospitalsForAccountRequest(request);
+    } catch (error) {
+      toast('โหลดรายชื่อโรงพยาบาลล่าสุดไม่สำเร็จ', U.friendlyError(error), 'error');
+    }
     const initialProvince = request.province || '';
     const provinceField = initialProvince
       ? `<label>จังหวัด<input id="requestProvinceDisplay" value="${U.esc(initialProvince)}" readonly><input id="requestProvince" type="hidden" value="${U.esc(initialProvince)}"></label>`
@@ -1410,7 +1473,13 @@
         return;
       }
 
-      const existingOptions = `<option value="">-- เลือกโรงพยาบาลที่มีอยู่ --</option>${activeHospitals.map(hospital => `<option value="${hospital.id}" ${hospital.id === suggestedExistingId ? 'selected' : ''}>${U.esc(hospital.name)}</option>`).join('')}`;
+      const buildExistingOptions = (searchText = '') => {
+        const query = normalizeHospitalName(searchText);
+        const visible = query
+          ? activeHospitals.filter(hospital => normalizeHospitalName(hospital.name).includes(query))
+          : activeHospitals;
+        return `<option value="">-- เลือกโรงพยาบาลที่มีอยู่ --</option>${visible.map(hospital => `<option value="${hospital.id}" ${hospital.id === suggestedExistingId ? 'selected' : ''}>${U.esc(hospital.name)}</option>`).join('')}`;
+      };
       let content = '';
 
       if (exact && exact.is_active) {
@@ -1432,8 +1501,10 @@
           <div class="hospital-status-card missing"><span>สถานะ</span><b>${exactInactive ? 'มีชื่อเดิมแต่ปิดใช้งาน' : 'ยังไม่มีในระบบ'}</b><p>${U.esc(request.hospital_name)} · ${U.esc(province)}</p></div>
           ${inactiveWarning}${candidateHtml}
           <div class="hospital-resolution-options">
-            <label class="resolution-choice"><input type="radio" name="hospitalResolution" value="existing"><span><b>ใช้โรงพยาบาลที่มีอยู่</b><small>เลือกจาก Master ในจังหวัดเดียวกัน</small></span></label>
-            <label>โรงพยาบาลในระบบ<select id="requestExistingHospital">${existingOptions}</select></label>
+            <label class="resolution-choice"><input type="radio" name="hospitalResolution" value="existing"><span><b>ใช้โรงพยาบาลที่มีอยู่</b><small>แสดงเฉพาะโรงพยาบาลในจังหวัด ${U.esc(province)}</small></span></label>
+            <label>ค้นหาโรงพยาบาลในจังหวัด<input id="requestExistingHospitalSearch" value="${U.esc(request.hospital_name || '')}" placeholder="พิมพ์ชื่อบางส่วน เช่น โรคทรวงอก"></label>
+            <label>โรงพยาบาลในระบบ<select id="requestExistingHospital">${buildExistingOptions(request.hospital_name || '')}</select></label>
+            <div id="requestExistingHospitalEmpty" class="notice warning hidden"><b>ไม่พบชื่อที่ค้นหาในจังหวัดนี้</b><p>ลองลบคำค้นบางส่วน หรือตรวจสอบจังหวัดก่อนยืนยันว่าเป็นโรงพยาบาลใหม่</p></div>
             <label class="resolution-choice ${exactInactive ? 'disabled' : ''}"><input type="radio" name="hospitalResolution" value="new" ${defaultResolution === 'new' ? 'checked' : ''} ${exactInactive ? 'disabled' : ''}><span><b>ยืนยันว่าเป็นโรงพยาบาลใหม่</b><small>${exactInactive ? 'เปิดใช้งานชื่อเดิมก่อน ระบบไม่อนุญาตให้สร้างชื่อซ้ำ' : 'ระบบจะเพิ่ม Master และอนุมัติบัญชีพร้อมกัน'}</small></span></label>
             <div id="newHospitalApprovalFields" class="proposed-hospital-box ${defaultResolution === 'new' ? '' : 'hidden'}">
               <label>ชื่อโรงพยาบาลตามชื่อทางการ<input id="requestNewHospitalName" value="${U.esc(request.hospital_name || '')}" maxlength="180"></label>
@@ -1450,9 +1521,26 @@
         $('#newHospitalApprovalFields')?.classList.toggle('hidden', !isNew);
         updateApprovalButton();
       }));
-      $('#requestExistingHospital')?.addEventListener('change', () => {
+      const existingSelect = $('#requestExistingHospital');
+      const existingSearch = $('#requestExistingHospitalSearch');
+      const existingEmpty = $('#requestExistingHospitalEmpty');
+      const syncExistingEmptyState = () => {
+        if (!existingSelect || !existingEmpty) return;
+        existingEmpty.classList.toggle('hidden', existingSelect.options.length > 1);
+      };
+      if (existingSearch && existingSelect) {
+        existingSearch.addEventListener('input', () => {
+          const previous = existingSelect.value;
+          existingSelect.innerHTML = buildExistingOptions(existingSearch.value);
+          if (previous && Array.from(existingSelect.options).some(option => option.value === previous)) existingSelect.value = previous;
+          syncExistingEmptyState();
+          updateApprovalButton();
+        });
+      }
+      syncExistingEmptyState();
+      existingSelect?.addEventListener('change', () => {
         const existingRadio = resolutionRoot.querySelector('input[name="hospitalResolution"][value="existing"]');
-        if (existingRadio && $('#requestExistingHospital').value) existingRadio.checked = true;
+        if (existingRadio && existingSelect.value) existingRadio.checked = true;
         $('#newHospitalApprovalFields')?.classList.add('hidden');
         updateApprovalButton();
       });
@@ -2090,7 +2178,7 @@
     else if (action === 'copy-phone') { await navigator.clipboard.writeText(event.target.closest('[data-phone]').dataset.phone); toast('คัดลอกเบอร์แล้ว','','success'); }
     else if (action === 'install-pwa') openInstallHelp();
     else if (action === 'admin-review-request') {
-      const requests = JSON.parse($('#adminContent').dataset.requests || '[]'); openAccountRequest(requests.find(x => x.id === event.target.closest('[data-request]').dataset.request));
+      const requests = JSON.parse($('#adminContent').dataset.requests || '[]'); await openAccountRequest(requests.find(x => x.id === event.target.closest('[data-request]').dataset.request));
     }
     else if (action === 'admin-resend-request-link') {
       const requests = JSON.parse($('#adminContent').dataset.requests || '[]'); await resendRequestLink(requests.find(x => x.id === event.target.closest('[data-request]').dataset.request));
@@ -2136,7 +2224,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.4.0').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.4.1').catch(() => {}));
     }
   }
 
