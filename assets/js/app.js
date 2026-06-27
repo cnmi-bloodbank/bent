@@ -1160,10 +1160,11 @@
     const { data, error } = await state.supabase.from('bent_account_requests').select('*').order('requested_at', { ascending: false });
     if (error) throw error;
     const actions = request => {
+      const deleteLabel = request.auth_user_id ? 'ลบบัญชี' : 'ลบคำขอ';
       if (request.status === 'approved' && request.auth_user_id) {
-        return `<button class="btn btn-soft" data-action="admin-resend-request-link" data-request="${request.id}">ส่งลิงก์ใหม่</button>`;
+        return `<div class="inline-actions"><button class="btn btn-soft" data-action="admin-resend-request-link" data-request="${request.id}">ส่งลิงก์ใหม่</button><button class="btn btn-danger" data-action="admin-delete-request" data-request="${request.id}">${deleteLabel}</button></div>`;
       }
-      return `<button class="btn btn-primary" data-action="admin-review-request" data-request="${request.id}">ตรวจสอบ</button>`;
+      return `<div class="inline-actions"><button class="btn btn-primary" data-action="admin-review-request" data-request="${request.id}">ตรวจสอบ</button><button class="btn btn-danger" data-action="admin-delete-request" data-request="${request.id}">${deleteLabel}</button></div>`;
     };
     const mailState = request => {
       if (request.email_sent_at) return `<span class="badge badge-active">ส่งแล้ว</span><br><small>${U.fmtDateTime(request.email_sent_at)}</small>`;
@@ -1207,7 +1208,8 @@
         <label>หมายเหตุของผู้ดูแล<textarea id="requestAdminNote" maxlength="500">${U.esc(request.admin_note || '')}</textarea></label>
         <div class="notice warning"><b>เมื่อกดอนุมัติ</b><p>ระบบจะเพิ่มโรงพยาบาลใหม่เมื่อจำเป็น ผูกผู้ใช้กับโรงพยาบาล สร้างบัญชี และส่งลิงก์ตั้งรหัสผ่านในขั้นตอนเดียว</p></div>
         <div class="modal-actions">
-          <button id="rejectRequestBtn" type="button" class="btn btn-danger">ไม่อนุมัติ</button>
+          <button id="deleteRequestBtn" type="button" class="btn btn-danger">${request.auth_user_id ? 'ลบบัญชี' : 'ลบคำขอ'}</button>
+          <button id="rejectRequestBtn" type="button" class="btn btn-secondary">ไม่อนุมัติ</button>
           <button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button>
           <button id="approveRequestBtn" type="submit" class="btn btn-primary">ตรวจสอบตัวเลือกโรงพยาบาล</button>
         </div>
@@ -1349,6 +1351,8 @@
       } catch (error) { toast('อนุมัติไม่สำเร็จ', U.friendlyError(error), 'error'); }
       finally { setButtonBusy(btn, false); }
     });
+    $('#deleteRequestBtn').addEventListener('click', () => confirmDeleteAccountRequest(request));
+
     $('#rejectRequestBtn').addEventListener('click', async () => {
       const btn = $('#rejectRequestBtn');
       try {
@@ -1357,6 +1361,40 @@
         closeModal(); toast('บันทึกว่าไม่อนุมัติแล้ว', '', 'success'); await loadAdminTab('requests');
       } catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
       finally { setButtonBusy(btn, false); }
+    });
+  }
+
+  function confirmDeleteAccountRequest(request) {
+    if (!request) return;
+    const hasAccount = Boolean(request.auth_user_id);
+    const title = hasAccount ? 'ยืนยันการลบบัญชี' : 'ยืนยันการลบคำขอ';
+    const buttonLabel = hasAccount ? 'ยืนยันลบบัญชีถาวร' : 'ยืนยันลบคำขอถาวร';
+    const detail = hasAccount
+      ? `ระบบจะลบบัญชีเข้าสู่ระบบ โปรไฟล์ ลิงก์ตั้งรหัสผ่าน และคำขอของ ${U.esc(request.full_name || request.email)} หากบัญชีมีประวัติสร้างประกาศหรือจัดการรูป ระบบจะไม่ยอมลบ และต้องเปลี่ยนสถานะเป็น “ปิดใช้งาน” แทน โรงพยาบาลใน Master จะไม่ถูกลบ`
+      : `ระบบจะลบคำขอของ ${U.esc(request.full_name || request.email)} ออกจากรายการถาวร ผู้สมัครสามารถส่งคำขอใหม่ด้วยอีเมลเดิมได้ โรงพยาบาลใน Master จะไม่ถูกลบ`;
+    openModal(title, request.email, `
+      <div class="notice danger"><b>การลบนี้ย้อนกลับไม่ได้</b><p>${detail}</p></div>
+      <label class="check-row"><input id="confirmDeleteRequestCheck" type="checkbox"><span>ฉันตรวจสอบอีเมลและยืนยันว่าต้องการลบรายการนี้ถาวร</span></label>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="confirmDeleteRequestBtn" type="button" class="btn btn-danger" disabled>${buttonLabel}</button></div>`);
+    const confirmCheck = $('#confirmDeleteRequestCheck');
+    const confirmButton = $('#confirmDeleteRequestBtn');
+    confirmCheck.addEventListener('change', () => { confirmButton.disabled = !confirmCheck.checked; });
+    confirmButton.addEventListener('click', async () => {
+      try {
+        setButtonBusy(confirmButton, true, 'กำลังลบ...');
+        const result = await I.call({
+          action: 'admin_delete_account_request',
+          access_token: state.session.access_token,
+          request_id: request.id
+        });
+        closeModal();
+        toast(result.deleted_user ? 'ลบบัญชีแล้ว' : 'ลบคำขอแล้ว', `${request.email} ถูกนำออกจากระบบแล้ว`, 'success');
+        await loadAdminTab('requests');
+      } catch (error) {
+        toast(hasAccount ? 'ลบบัญชีไม่สำเร็จ' : 'ลบคำขอไม่สำเร็จ', U.friendlyError(error), 'error', 9000);
+      } finally {
+        setButtonBusy(confirmButton, false);
+      }
     });
   }
 
@@ -1725,6 +1763,9 @@
     else if (action === 'admin-resend-request-link') {
       const requests = JSON.parse($('#adminContent').dataset.requests || '[]'); await resendRequestLink(requests.find(x => x.id === event.target.closest('[data-request]').dataset.request));
     }
+    else if (action === 'admin-delete-request') {
+      const requests = JSON.parse($('#adminContent').dataset.requests || '[]'); confirmDeleteAccountRequest(requests.find(x => x.id === event.target.closest('[data-request]').dataset.request));
+    }
     else if (action === 'admin-edit-user') {
       const users = JSON.parse($('#adminContent').dataset.users || '[]'); openAdminUser(users.find(x => x.id === event.target.closest('[data-user]').dataset.user));
     }
@@ -1762,7 +1803,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.3.1').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.3.2').catch(() => {}));
     }
   }
 
