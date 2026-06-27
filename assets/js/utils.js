@@ -56,6 +56,7 @@
       ['SETUP_LINK_INVALID_OR_USED', 'ลิงก์นี้ถูกใช้แล้ว ถูกยกเลิก หรือไม่ถูกต้อง กรุณาขอลิงก์ใหม่'],
       ['ACCOUNT_NOT_ACTIVE', 'บัญชีนี้ยังไม่พร้อมใช้งาน กรุณาติดต่อผู้ดูแลระบบ'],
       ['SYSTEM_ADMIN_REQUIRED', 'เฉพาะผู้ดูแลระบบเท่านั้นที่ทำรายการนี้ได้'],
+      ['ADMIN_REQUIRED', 'เฉพาะผู้ดูแลระบบเท่านั้นที่ทำรายการนี้ได้'],
       ['MAIL_DAILY_QUOTA_EXCEEDED', 'โควตาส่งอีเมลวันนี้เต็มแล้ว กรุณาให้ผู้ดูแลส่งใหม่ภายหลัง'],
       ['PASSWORD_EMAIL_SQL_NOT_READY', 'ส่วนออกลิงก์ตั้งรหัสผ่านใน Supabase ยังไม่พร้อม ให้ Run ไฟล์ supabase/05_fix_password_email_and_user_delete.sql แล้วส่งลิงก์ใหม่'],
       ['gen_random_bytes', 'Supabase ยังเรียกส่วนสร้างลิงก์ไม่ได้ ให้ Run ไฟล์ supabase/05_fix_password_email_and_user_delete.sql'],
@@ -88,6 +89,10 @@
       ['ACTIVE_USER_REQUIRED', 'บัญชีต้องอยู่สถานะใช้งานก่อนจึงจะส่งลิงก์ตั้งรหัสผ่านได้'],
       ['NOT_ALLOWED', 'บัญชีนี้ไม่มีสิทธิ์ทำรายการดังกล่าว'],
       ['ANNOUNCEMENT_LOCKED', 'รายการนี้ปิดแล้ว จึงแก้ไขไม่ได้'],
+      ['ANNOUNCEMENT_NOT_FOUND', 'ไม่พบประกาศนี้ อาจถูกลบหรือเปลี่ยนแปลงไปแล้ว'],
+      ['INVALID_DATE_RANGE', 'ช่วงวันที่ไม่ถูกต้อง วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด'],
+      ['bent_admin_delete_announcement', 'Supabase ยังไม่มีฟังก์ชันรุ่น v1.4.0 ให้ Run ไฟล์ supabase/08_admin_usability_and_delete_announcement.sql'],
+      ['bent_get_pilot_stats_filtered', 'Supabase ยังไม่มีฟังก์ชันสถิติรุ่น v1.4.0 ให้ Run ไฟล์ supabase/08_admin_usability_and_delete_announcement.sql'],
       ['Failed to fetch', 'เชื่อมต่อระบบไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่']
     ];
     const hit = map.find(([key]) => raw.includes(key));

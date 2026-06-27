@@ -1,8 +1,8 @@
-const CACHE_NAME = 'bent-mvp-v1.3.2-shell';
+const CACHE_NAME = 'bent-mvp-v1.4.0-shell';
 const APP_SHELL = [
   './', './index.html', './offline.html', './manifest.webmanifest',
-  './assets/css/app.css?v=1.3.2', './assets/js/config.js?v=1.3.2', './assets/js/utils.js?v=1.3.2',
-  './assets/js/image-service.js?v=1.3.2', './assets/js/app.js?v=1.3.2',
+  './assets/css/app.css?v=1.4.0', './assets/js/config.js?v=1.4.0', './assets/js/utils.js?v=1.4.0',
+  './assets/js/image-service.js?v=1.4.0', './assets/js/app.js?v=1.4.0',
   './assets/icons/icon-192.png', './assets/icons/icon-512.png', './assets/icons/icon-maskable-512.png'
 ];
 
