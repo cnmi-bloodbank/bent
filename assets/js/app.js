@@ -45,6 +45,42 @@
     'กระบี่','พังงา','ภูเก็ต','สุราษฎร์ธานี','ระนอง','ชุมพร','สงขลา','สตูล','ตรัง','พัทลุง','ปัตตานี','ยะลา','นราธิวาส'
   ];
 
+  const THAI_REGIONS = {
+    'ภาคเหนือ': ['เชียงใหม่','ลำพูน','ลำปาง','อุตรดิตถ์','แพร่','น่าน','พะเยา','เชียงราย','แม่ฮ่องสอน','นครสวรรค์','อุทัยธานี','กำแพงเพชร','ตาก','สุโขทัย','พิษณุโลก','พิจิตร','เพชรบูรณ์'],
+    'ภาคตะวันออกเฉียงเหนือ': ['นครราชสีมา','บุรีรัมย์','สุรินทร์','ศรีสะเกษ','อุบลราชธานี','ยโสธร','ชัยภูมิ','อำนาจเจริญ','บึงกาฬ','หนองบัวลำภู','ขอนแก่น','อุดรธานี','เลย','หนองคาย','มหาสารคาม','ร้อยเอ็ด','กาฬสินธุ์','สกลนคร','นครพนม','มุกดาหาร'],
+    'ภาคกลาง': ['กรุงเทพมหานคร','สมุทรปราการ','นนทบุรี','ปทุมธานี','พระนครศรีอยุธยา','อ่างทอง','ลพบุรี','สิงห์บุรี','ชัยนาท','สระบุรี','นครนายก','สุพรรณบุรี','นครปฐม','สมุทรสาคร','สมุทรสงคราม'],
+    'ภาคตะวันออก': ['ชลบุรี','ระยอง','จันทบุรี','ตราด','ฉะเชิงเทรา','ปราจีนบุรี','สระแก้ว'],
+    'ภาคตะวันตก': ['ราชบุรี','กาญจนบุรี','เพชรบุรี','ประจวบคีรีขันธ์'],
+    'ภาคใต้': ['นครศรีธรรมราช','กระบี่','พังงา','ภูเก็ต','สุราษฎร์ธานี','ระนอง','ชุมพร','สงขลา','สตูล','ตรัง','พัทลุง','ปัตตานี','ยะลา','นราธิวาส']
+  };
+  const REGION_NAMES = Object.keys(THAI_REGIONS);
+  const PROVINCE_REGION = Object.fromEntries(REGION_NAMES.flatMap(region => THAI_REGIONS[region].map(province => [province, region])));
+
+  const MEMBER_REPORT_REASON_LABEL = {
+    resigned: 'ลาออกจากโรงพยาบาล',
+    left_hospital: 'ย้ายไปโรงพยาบาลอื่น',
+    transferred_unit: 'ย้ายหน่วยและไม่ได้ปฏิบัติงานด้านธนาคารเลือดแล้ว',
+    other: 'อื่น ๆ'
+  };
+  const MEMBER_REPORT_STATUS_LABEL = {
+    pending_verification: 'รอผู้ดูแลตรวจสอบ',
+    confirmed_inactive: 'ตรวจสอบแล้วและปิดบัญชี',
+    dismissed: 'ตรวจสอบแล้ว ไม่ดำเนินการ',
+    cancelled: 'ผู้แจ้งยกเลิก'
+  };
+  const SUPPORT_CATEGORY_LABEL = {
+    question: 'สอบถามการใช้งาน',
+    suggestion: 'เสนอแนะ',
+    problem: 'แจ้งปัญหา',
+    account: 'บัญชีผู้ใช้งาน',
+    other: 'เรื่องอื่น ๆ'
+  };
+  const SUPPORT_STATUS_LABEL = {
+    waiting_admin: 'รอผู้ดูแลตอบ',
+    waiting_user: 'รอผู้ใช้งานตอบ',
+    resolved: 'ปิดเรื่องแล้ว'
+  };
+
 
   function provinceOptions(selected = '') {
     return `<option value="">-- กรุณาเลือกจังหวัด --</option>${THAI_PROVINCES.map(name => `<option value="${U.esc(name)}" ${name === selected ? 'selected' : ''}>${U.esc(name)}</option>`).join('')}`;
@@ -596,6 +632,14 @@
   function canManage(item) { return isAdmin() || item.hospital_id === state.profile?.hospital_id; }
   function activeMasters(list) { return list.filter(x => x.is_active); }
 
+  function dateTimeLocalValue(value) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
   function bangkokDateKey(value = new Date()) {
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return '';
@@ -643,6 +687,9 @@
       ['browse', 'ค้น', 'ค้นหาประกาศ'],
       ['create', 'เพิ่ม', 'สร้างประกาศ'],
       ['mine', 'รพ.', 'รายการของโรงพยาบาลฉัน'],
+      ['members', 'คน', 'สมาชิกโรงพยาบาล'],
+      ['account', 'ฉัน', 'ข้อมูลบัญชีของฉัน'],
+      ['support', 'แชท', 'ติดต่อผู้ดูแล'],
       ['guide', 'คู่มือ', 'คู่มือการใช้งาน']
     ];
     let html = items.map(([view, icon, label]) => `<button class="nav-btn ${state.currentView === view ? 'active' : ''}" data-view="${view}"><span class="nav-icon">${icon}</span>${label}</button>`).join('');
@@ -669,6 +716,9 @@
     else if (view === 'browse') renderBrowse();
     else if (view === 'create') renderAnnouncementForm(options.item || state.editingAnnouncement);
     else if (view === 'mine') renderMine();
+    else if (view === 'members') await renderHospitalMembers();
+    else if (view === 'account') await renderAccount();
+    else if (view === 'support') await renderSupport();
     else if (view === 'guide') renderGuide();
     else if (view === 'admin' && isAdmin()) await renderAdmin();
     else { state.currentView = 'dashboard'; renderDashboard(); }
@@ -719,8 +769,25 @@
     return `<div class="stat-card"><span>${U.esc(label)}</span><strong>${Number(number || 0).toLocaleString('th-TH')}</strong><small>${U.esc(small || '')}</small></div>`;
   }
 
+  function regionOptions(selected = '') {
+    return `<option value="">ทุกภาค</option>${REGION_NAMES.map(region => `<option value="${U.esc(region)}" ${region === selected ? 'selected' : ''}>${U.esc(region)}</option>`).join('')}`;
+  }
+
+  function provinceFilterOptions(region = '', selected = '') {
+    const provinces = region ? (THAI_REGIONS[region] || []) : THAI_PROVINCES;
+    return `<option value="">ทุกจังหวัด</option>${provinces.map(province => `<option value="${U.esc(province)}" ${province === selected ? 'selected' : ''}>${U.esc(province)}</option>`).join('')}`;
+  }
+
+  function hospitalFilterOptions(region = '', province = '', selected = '') {
+    const hospitals = activeMasters(state.masters.hospitals)
+      .filter(hospital => !region || PROVINCE_REGION[hospital.province] === region)
+      .filter(hospital => !province || hospital.province === province)
+      .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+    return `<option value="">ทุกโรงพยาบาล</option>${hospitals.map(hospital => `<option value="${hospital.id}" ${hospital.id === selected ? 'selected' : ''}>${U.esc(hospital.name)}${province ? '' : ` — ${U.esc(hospital.province || 'ไม่ระบุจังหวัด')}`}</option>`).join('')}`;
+  }
+
   function renderBrowse() {
-    setPage('ค้นหาประกาศ', 'กรอกเงื่อนไข แล้วกด “ค้นหา” ก่อนระบบจึงแสดงรายการ');
+    setPage('ค้นหาประกาศ', 'เลือกภาค จังหวัด หรือเงื่อนไขอื่น แล้วกด “ค้นหา”');
     const f = state.filters || {};
     const selectedAntigens = Array.isArray(f.antigens) ? f.antigens : (f.antigen ? [f.antigen] : []);
     main.innerHTML = `
@@ -731,10 +798,13 @@
           <label>ผลิตภัณฑ์โลหิต<select id="filterComponent"><option value="">ทั้งหมด</option>${activeMasters(state.masters.components).map(c => `<option value="${c.id}">${U.esc(c.display_name)}</option>`).join('')}</select></label>
           <label>หมู่เลือด ABO<select id="filterAbo"><option value="">ทั้งหมด</option>${['A','B','O','AB','not_specified'].map(x => `<option value="${x}">${x === 'not_specified' ? 'ไม่ระบุ' : x}</option>`).join('')}</select></label>
           <label>หมู่เลือด Rh<select id="filterRh"><option value="">ทั้งหมด</option><option value="positive">Positive</option><option value="negative">Negative</option><option value="not_specified">ไม่ระบุ</option></select></label>
-          <label>โรงพยาบาล<select id="filterHospital"><option value="">ทั้งหมด</option>${activeMasters(state.masters.hospitals).map(h => `<option value="${h.id}">${U.esc(h.name)}</option>`).join('')}</select></label>
+          <label>ภาค<select id="filterRegion">${regionOptions(f.region || '')}</select></label>
+          <label>จังหวัด<select id="filterProvince">${provinceFilterOptions(f.region || '', f.province || '')}</select></label>
+          <label>โรงพยาบาล<select id="filterHospital">${hospitalFilterOptions(f.region || '', f.province || '', f.hospital || '')}</select></label>
           <label>สถานะประกาศ<select id="filterStatus"><option value="">รายการที่ยังติดต่อได้ทั้งหมด</option><option value="open">เปิดรับการติดต่อ</option><option value="coordinating">กำลังประสานงาน</option></select></label>
           <label>แหล่งที่มาของเลือด<select id="filterSource"><option value="">ทั้งหมด</option>${activeMasters(state.masters.sources).map(s => `<option value="${s.id}">${U.esc(s.display_name)}</option>`).join('')}</select></label>
           <label>รูปประกอบ<select id="filterImage"><option value="">ทั้งหมด</option><option value="yes">มีรูป</option><option value="no">ไม่มีรูป</option></select></label>
+          <div class="filter-region-note">การแบ่งภาคใช้เพื่อช่วยค้นหาใน BENT เท่านั้น จังหวัดยังเป็นข้อมูลหลักของโรงพยาบาล</div>
           <div class="filter-antigen-field">
             <div class="filter-antigen-heading"><div><b>แอนติเจนที่ต้องการผลลบ</b><span>เลือกได้หลายรายการ โดยผลค้นหาต้องมีครบทุกตัวที่เลือก</span></div><small id="filterAntigenCount">ยังไม่ได้เลือก</small></div>
             <div class="filter-antigen-picker">${activeMasters(state.masters.antigens).map(a => `<label class="antigen-option"><input type="checkbox" name="filterAntigen" value="${U.esc(a.code)}" ${selectedAntigens.includes(a.code) ? 'checked' : ''}><span>${U.esc(a.display_name)}-</span></label>`).join('')}</div>
@@ -744,9 +814,25 @@
         <div class="result-head"><div><h2>ผลการค้นหา</h2><p id="resultCount"></p></div><button class="btn btn-primary" data-view="create">สร้างประกาศ</button></div>
         <section id="announcementResults" class="announcement-grid"></section>
       </div>`;
-    Object.entries({ Type:'type', Component:'component', Abo:'abo', Rh:'rh', Hospital:'hospital', Status:'status', Source:'source', Image:'image' }).forEach(([id, key]) => {
+
+    Object.entries({ Type:'type', Component:'component', Abo:'abo', Rh:'rh', Status:'status', Source:'source', Image:'image' }).forEach(([id, key]) => {
       const el = $(`#filter${id}`); if (el && f[key]) el.value = f[key];
     });
+
+    const refreshLocationFilters = (changed) => {
+      const region = $('#filterRegion').value;
+      let province = $('#filterProvince').value;
+      let hospital = $('#filterHospital').value;
+      if (changed === 'region' && province && PROVINCE_REGION[province] !== region) province = '';
+      $('#filterProvince').innerHTML = provinceFilterOptions(region, province);
+      province = $('#filterProvince').value;
+      const validHospital = state.masters.hospitals.find(h => h.id === hospital);
+      if (validHospital && ((region && PROVINCE_REGION[validHospital.province] !== region) || (province && validHospital.province !== province))) hospital = '';
+      $('#filterHospital').innerHTML = hospitalFilterOptions(region, province, hospital);
+    };
+    $('#filterRegion').addEventListener('change', () => refreshLocationFilters('region'));
+    $('#filterProvince').addEventListener('change', () => refreshLocationFilters('province'));
+
     const updateCount = () => {
       const count = $$('input[name="filterAntigen"]:checked').length;
       $('#filterAntigenCount').textContent = count ? `เลือก ${count} รายการ` : 'ยังไม่ได้เลือก';
@@ -764,11 +850,13 @@
       $('#announcementResults').innerHTML = emptyState('กรอกเงื่อนไขแล้วกด “ค้นหา”','ระบบจะยังไม่แสดงประกาศจนกว่าจะกดค้นหา');
     }
   }
+
   function collectFilters() {
     return {
       text: $('#filterText')?.value.trim().toLowerCase() || '', type: $('#filterType')?.value || '',
       component: $('#filterComponent')?.value || '', abo: $('#filterAbo')?.value || '', rh: $('#filterRh')?.value || '',
-      antigens: $$('input[name="filterAntigen"]:checked').map(x => x.value), hospital: $('#filterHospital')?.value || '', status: $('#filterStatus')?.value || '',
+      antigens: $$('input[name="filterAntigen"]:checked').map(x => x.value), region: $('#filterRegion')?.value || '',
+      province: $('#filterProvince')?.value || '', hospital: $('#filterHospital')?.value || '', status: $('#filterStatus')?.value || '',
       source: $('#filterSource')?.value || '', image: $('#filterImage')?.value || ''
     };
   }
@@ -777,15 +865,18 @@
     const f = collectFilters(); state.filters = f;
     let rows = activeAnnouncements();
     rows = rows.filter(a => {
-      const searchable = [a.component?.display_name, a.other_component, a.hospital?.name, a.source?.display_name, a.blood_source_detail, a.contact_name].join(' ').toLowerCase();
+      const searchable = [a.component?.display_name, a.other_component, a.hospital?.name, a.hospital?.province, a.source?.display_name, a.blood_source_detail, a.contact_name].join(' ').toLowerCase();
       const hasImage = (a.images || []).some(i => i.image_status === 'active');
       const announcementAntigens = a.phenotype_negative || [];
+      const province = a.hospital?.province || '';
       return (!f.text || searchable.includes(f.text))
         && (!f.type || a.announcement_type === f.type)
         && (!f.component || a.component_id === f.component)
         && (!f.abo || a.abo === f.abo)
         && (!f.rh || a.rh === f.rh)
         && (!f.antigens.length || f.antigens.every(code => announcementAntigens.includes(code)))
+        && (!f.region || PROVINCE_REGION[province] === f.region)
+        && (!f.province || province === f.province)
         && (!f.hospital || a.hospital_id === f.hospital)
         && (!f.status || a.status === f.status)
         && (!f.source || a.blood_source_id === f.source)
@@ -793,7 +884,8 @@
     });
     const antigenCount = $('#filterAntigenCount');
     if (antigenCount) antigenCount.textContent = f.antigens.length ? `เลือก ${f.antigens.length} รายการ` : 'ยังไม่ได้เลือก';
-    $('#resultCount').textContent = `พบ ${rows.length.toLocaleString('th-TH')} รายการ`;
+    const locationText = [f.region, f.province].filter(Boolean).join(' · ');
+    $('#resultCount').textContent = `พบ ${rows.length.toLocaleString('th-TH')} รายการ${locationText ? ` ใน ${locationText}` : ''}`;
     $('#announcementResults').innerHTML = rows.map(renderAnnouncementCard).join('') || emptyState('ไม่พบรายการที่ตรงกับตัวกรอง','ลองลดเงื่อนไขบางช่อง หรือสร้างประกาศใหม่');
   }
 
@@ -1259,6 +1351,378 @@
     });
   }
 
+  async function renderAccount() {
+    setPage('ข้อมูลบัญชีของฉัน', 'แก้ไขข้อมูลติดต่อและส่งคำขอย้ายโรงพยาบาล');
+    main.innerHTML = '<div class="loading-block"><div class="spinner"></div></div>';
+
+    const { data: freshProfile, error: profileError } = await state.supabase
+      .from('bent_profiles')
+      .select('*, hospital:bent_hospitals(id,name,province,phone,is_active)')
+      .eq('id', state.session.user.id)
+      .maybeSingle();
+    if (profileError) throw profileError;
+    if (freshProfile) {
+      state.profile = freshProfile;
+      state.hospital = freshProfile.hospital || state.masters.hospitals.find(h => h.id === freshProfile.hospital_id) || null;
+      renderUserBlock();
+    }
+
+    const { data: transfers, error: transferError } = await state.supabase
+      .from('bent_hospital_transfer_requests')
+      .select(`
+        *,
+        from_hospital:bent_hospitals!bent_hospital_transfer_requests_from_hospital_id_fkey(id,name,province,phone,is_active),
+        to_hospital:bent_hospitals!bent_hospital_transfer_requests_to_hospital_id_fkey(id,name,province,phone,is_active)
+      `)
+      .eq('user_id', state.profile.id)
+      .order('requested_at', { ascending: false })
+      .limit(10);
+    if (transferError) throw transferError;
+
+    const pending = (transfers || []).find(row => row.status === 'pending_verification');
+    const activeHospitals = state.masters.hospitals.filter(h => h.is_active && h.id !== state.profile.hospital_id);
+    const historyHtml = (transfers || []).length
+      ? `<div class="transfer-history">${transfers.map(row => `
+          <div class="transfer-history-row">
+            <div><b>${U.esc(row.from_hospital?.name || '-')} → ${U.esc(row.to_hospital?.name || '-')}</b><span>${U.esc(row.to_hospital?.province || '-')} · ส่งคำขอ ${U.fmtDateTime(row.requested_at)}</span></div>
+            <span class="badge badge-${row.status}">${U.esc(U.statusLabel[row.status] || row.status)}</span>
+          </div>`).join('')}</div>`
+      : '<p class="field-help">ยังไม่มีประวัติคำขอย้ายโรงพยาบาล</p>';
+
+    const pendingHtml = pending ? `
+      <div class="hospital-status-card pending-transfer"><span>สถานะคำขอ</span><b>${U.esc(U.statusLabel[pending.status] || pending.status)}</b><p>${U.esc(pending.from_hospital?.name || '-')} → ${U.esc(pending.to_hospital?.name || '-')}</p></div>
+      <div class="transfer-progress-grid">
+        <div class="${pending.old_hospital_verified_at ? 'done' : ''}"><b>${pending.old_hospital_verified_at ? '✓' : '1'}</b><span>ตรวจสอบโรงพยาบาลเดิม</span></div>
+        <div class="${pending.new_hospital_verified_at ? 'done' : ''}"><b>${pending.new_hospital_verified_at ? '✓' : '2'}</b><span>ตรวจสอบโรงพยาบาลใหม่</span></div>
+        <div class="${pending.no_outstanding_items_confirmed ? 'done' : ''}"><b>${pending.no_outstanding_items_confirmed ? '✓' : '3'}</b><span>ตรวจรายการค้าง</span></div>
+      </div>
+      <div class="info-box"><b>เหตุผลที่แจ้ง</b><p>${U.esc(pending.reason)}</p>${pending.requested_effective_date ? `<p>วันที่คาดว่าจะเริ่มงาน: ${U.fmtDate(pending.requested_effective_date)}</p>` : ''}${pending.admin_note ? `<p>หมายเหตุผู้ดูแล: ${U.esc(pending.admin_note)}</p>` : ''}</div>
+      <button id="cancelTransferRequestBtn" type="button" class="btn btn-ghost">ยกเลิกคำขอนี้</button>` : `
+      <div class="notice warning transfer-policy-notice">
+        <b>กรุณาอ่านก่อนยื่นคำขอย้ายโรงพยาบาล</b>
+        <ul>
+          <li>ผู้ดูแล BENT จะโทรตรวจสอบทั้งโรงพยาบาลเดิมและโรงพยาบาลใหม่</li>
+          <li>โรงพยาบาลเดิมมีหน้าที่ยืนยันข้อมูลเท่านั้น ไม่มีสิทธิ์อนุญาตหรือขัดขวางการย้ายบัญชี</li>
+          <li>ต้องปิดหรือส่งมอบรายการที่ยังเปิด/กำลังประสานงานให้เรียบร้อยก่อนอนุมัติ</li>
+          <li>ชื่อผู้ให้ข้อมูล วันที่โทร และผลการตรวจสอบจะถูกบันทึกในประวัติการเปลี่ยนแปลง</li>
+          <li>ประกาศและประวัติเก่ายังคงเป็นของโรงพยาบาลเดิม ไม่ถูกย้ายย้อนหลัง</li>
+        </ul>
+      </div>
+      <form id="hospitalTransferForm">
+        <div class="field-grid">
+          <label>จังหวัดของโรงพยาบาลใหม่<select id="transferProvince" required>${provinceOptions('')}</select></label>
+          <label>ค้นหาชื่อโรงพยาบาล<input id="transferHospitalSearch" type="search" disabled placeholder="เลือกจังหวัดก่อน"></label>
+        </div>
+        <label>โรงพยาบาลใหม่<select id="transferHospitalId" required disabled><option value="">-- เลือกจังหวัดก่อน --</option></select></label>
+        <label>เหตุผลการย้าย<textarea id="transferReason" required maxlength="1000" placeholder="เช่น ย้ายสถานที่ปฏิบัติงานประจำไปยังโรงพยาบาลใหม่"></textarea></label>
+        <label>วันที่คาดว่าจะเริ่มงานที่ใหม่ (ถ้ามี)<input id="transferEffectiveDate" type="date" min="${bangkokDateKey()}"></label>
+        <label class="check-row"><input id="transferAgreement" type="checkbox" required><span>ฉันอ่านเงื่อนไขข้างต้นแล้ว และยืนยันว่าข้อมูลที่แจ้งเป็นความจริง</span></label>
+        <button id="submitTransferRequestBtn" type="submit" class="btn btn-primary">ยื่นคำขอย้ายโรงพยาบาล</button>
+      </form>`;
+
+    main.innerHTML = `
+      <div class="page-stack">
+        <section class="panel"><div class="panel-header"><div><h2>ข้อมูลส่วนตัว</h2><p>ชื่อและเบอร์โทรแก้ไขได้ทันที ส่วนโรงพยาบาลต้องส่งคำขอตรวจสอบ</p></div></div><div class="panel-body">
+          <form id="myProfileForm">
+            <div class="field-grid"><label>ชื่อ–นามสกุล<input id="myProfileName" required maxlength="120" value="${U.esc(state.profile.full_name || '')}"></label><label>เบอร์โทรติดต่อ<input id="myProfilePhone" required maxlength="30" value="${U.esc(state.profile.phone || '')}"></label></div>
+            <label>อีเมล<input value="${U.esc(state.profile.email || '')}" disabled></label>
+            <label>โรงพยาบาลปัจจุบัน<input value="${U.esc(state.hospital?.name || '-')} · ${U.esc(state.hospital?.province || '-')}" disabled></label>
+            <button id="saveMyProfileBtn" type="submit" class="btn btn-primary">บันทึกข้อมูลส่วนตัว</button>
+          </form>
+        </div></section>
+        <section class="panel"><div class="panel-header"><div><h2>ขอย้ายโรงพยาบาล</h2><p>บัญชียังผูกกับโรงพยาบาลเดิมจนกว่าผู้ดูแลตรวจสอบและอนุมัติ</p></div></div><div class="panel-body">${pendingHtml}</div></section>
+        <section class="panel"><div class="panel-header"><div><h2>ประวัติคำขอย้าย</h2><p>แสดงคำขอล่าสุดของบัญชีนี้</p></div></div><div class="panel-body">${historyHtml}</div></section>
+      </div>`;
+
+    $('#myProfileForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = $('#saveMyProfileBtn');
+      try {
+        setButtonBusy(button, true, 'กำลังบันทึก...');
+        const { data, error } = await state.supabase.rpc('bent_update_own_profile', {
+          p_full_name: $('#myProfileName').value.trim(),
+          p_phone: $('#myProfilePhone').value.trim()
+        });
+        if (error) throw error;
+        const updated = Array.isArray(data) ? data[0] : data;
+        if (updated) {
+          state.profile.full_name = updated.full_name;
+          state.profile.phone = updated.phone;
+          renderUserBlock();
+        }
+        toast('บันทึกข้อมูลแล้ว', '', 'success');
+      } catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+
+    if (pending) {
+      $('#cancelTransferRequestBtn').addEventListener('click', () => {
+        openModal('ยืนยันยกเลิกคำขอ', `${pending.from_hospital?.name || '-'} → ${pending.to_hospital?.name || '-'}`, `
+          <div class="notice warning"><b>คำขอจะถูกยกเลิก</b><p>บัญชีของคุณยังคงผูกกับโรงพยาบาลเดิม และสามารถยื่นคำขอใหม่ภายหลังได้</p></div>
+          <div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>กลับ</button><button id="confirmCancelTransferBtn" type="button" class="btn btn-danger">ยืนยันยกเลิกคำขอ</button></div>`);
+        $('#confirmCancelTransferBtn').addEventListener('click', async () => {
+          const button = $('#confirmCancelTransferBtn');
+          try {
+            setButtonBusy(button, true, 'กำลังยกเลิก...');
+            const { error } = await state.supabase.rpc('bent_cancel_hospital_transfer_request', { p_request_id: pending.id });
+            if (error) throw error;
+            closeModal(); toast('ยกเลิกคำขอแล้ว', '', 'success'); await renderAccount();
+          } catch (error) { toast('ยกเลิกไม่สำเร็จ', U.friendlyError(error), 'error'); }
+          finally { setButtonBusy(button, false); }
+        });
+      });
+      return;
+    }
+
+    const renderTransferHospitals = () => {
+      const province = $('#transferProvince').value;
+      const search = $('#transferHospitalSearch').value.trim().toLowerCase();
+      const rows = activeHospitals
+        .filter(h => h.province === province)
+        .filter(h => !search || h.name.toLowerCase().includes(search))
+        .sort((a,b) => a.name.localeCompare(b.name,'th'));
+      $('#transferHospitalId').innerHTML = `<option value="">-- กรุณาเลือกโรงพยาบาล --</option>${rows.map(h => `<option value="${h.id}">${U.esc(h.name)}</option>`).join('')}`;
+    };
+    $('#transferProvince').addEventListener('change', () => {
+      const enabled = Boolean($('#transferProvince').value);
+      $('#transferHospitalSearch').disabled = !enabled;
+      $('#transferHospitalId').disabled = !enabled;
+      $('#transferHospitalSearch').value = '';
+      $('#transferHospitalSearch').placeholder = enabled ? 'พิมพ์ชื่อบางส่วนเพื่อกรองรายการ' : 'เลือกจังหวัดก่อน';
+      renderTransferHospitals();
+    });
+    $('#transferHospitalSearch').addEventListener('input', renderTransferHospitals);
+
+    $('#hospitalTransferForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const hospital = activeHospitals.find(h => h.id === $('#transferHospitalId').value);
+      const reason = $('#transferReason').value.trim();
+      const effectiveDate = $('#transferEffectiveDate').value || null;
+      if (!hospital) { toast('กรุณาเลือกโรงพยาบาลใหม่', '', 'error'); return; }
+      if (!$('#transferAgreement').checked) { toast('กรุณาอ่านและยืนยันเงื่อนไขก่อน', '', 'error'); return; }
+
+      openModal('ยืนยันส่งคำขอย้ายโรงพยาบาล', 'ผู้ดูแลจะโทรตรวจสอบทั้งสองโรงพยาบาล', `
+        <div class="request-hospital-summary"><div><span>โรงพยาบาลเดิม</span><b>${U.esc(state.hospital?.name || '-')}</b></div><div><span>โรงพยาบาลใหม่</span><b>${U.esc(hospital.name)}</b></div><div><span>จังหวัด</span><b>${U.esc(hospital.province || '-')}</b></div></div>
+        <div class="notice warning"><b>หลังส่งคำขอ</b><p>บัญชียังใช้งานในนามโรงพยาบาลเดิมจนกว่าผู้ดูแลจะโทรตรวจสอบทั้งสองฝั่ง ตรวจรายการค้าง และอนุมัติการย้าย</p><p>โรงพยาบาลเดิมมีหน้าที่ยืนยันข้อมูล ไม่ได้มีสิทธิ์ขัดขวางการย้ายบัญชี</p></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>กลับไปตรวจข้อมูล</button><button id="confirmSubmitTransferBtn" type="button" class="btn btn-primary">ยืนยันส่งคำขอ</button></div>`);
+      $('#confirmSubmitTransferBtn').addEventListener('click', async () => {
+        const button = $('#confirmSubmitTransferBtn');
+        try {
+          setButtonBusy(button, true, 'กำลังส่งคำขอ...');
+          const { error } = await state.supabase.rpc('bent_submit_hospital_transfer_request', {
+            p_to_hospital_id: hospital.id,
+            p_reason: reason,
+            p_requested_effective_date: effectiveDate
+          });
+          if (error) throw error;
+          closeModal(); toast('ส่งคำขอย้ายโรงพยาบาลแล้ว', 'สถานะ: รอตรวจสอบโรงพยาบาลเดิมและโรงพยาบาลใหม่', 'success', 8000); await renderAccount();
+        } catch (error) { toast('ส่งคำขอไม่สำเร็จ', U.friendlyError(error), 'error'); }
+        finally { setButtonBusy(button, false); }
+      });
+    });
+  }
+
+
+  async function renderHospitalMembers() {
+    setPage('สมาชิกโรงพยาบาล', 'ตรวจรายชื่อผู้ใช้งาน และแจ้งผู้ดูแลเมื่อมีผู้พ้นสภาพ');
+    main.innerHTML = '<div class="loading-block"><div class="spinner"></div></div>';
+
+    const [memberResult, reportResult] = await Promise.all([
+      state.supabase.rpc('bent_list_same_hospital_members'),
+      state.supabase.rpc('bent_list_my_member_departure_reports')
+    ]);
+    if (memberResult.error) throw memberResult.error;
+    if (reportResult.error) throw reportResult.error;
+
+    const members = memberResult.data || [];
+    const reports = reportResult.data || [];
+    const pendingByUser = new Map(reports.filter(report => report.status === 'pending_verification').map(report => [report.reported_user_id, report]));
+    const memberRows = members.map(member => {
+      const pending = pendingByUser.get(member.user_id);
+      return `<div class="member-card">
+        <div class="member-avatar">${U.esc((member.full_name || '?').slice(0, 1))}</div>
+        <div class="member-card-body"><b>${U.esc(member.full_name || '-')}</b><span>${U.esc(member.masked_email || '')}${member.role === 'system_admin' ? ' · ผู้ดูแลระบบ' : ''}</span></div>
+        ${pending
+          ? '<span class="badge badge-pending_verification">แจ้งแล้ว รอตรวจสอบ</span>'
+          : `<button type="button" class="btn btn-ghost" data-report-member="${member.user_id}">แจ้งว่าไม่ได้ปฏิบัติงานแล้ว</button>`}
+      </div>`;
+    }).join('');
+
+    const history = reports.map(report => `<div class="report-history-row">
+      <div><b>${U.esc(report.reported_user_full_name)}</b><span>${U.esc(MEMBER_REPORT_REASON_LABEL[report.reason_category] || report.reason_category)} · ส่ง ${U.fmtDateTime(report.requested_at)}</span></div>
+      <div class="inline-actions"><span class="badge badge-${U.esc(report.status)}">${U.esc(MEMBER_REPORT_STATUS_LABEL[report.status] || report.status)}</span>${report.status === 'pending_verification' ? `<button type="button" class="btn btn-ghost" data-cancel-member-report="${report.id}">ยกเลิกคำแจ้ง</button>` : ''}</div>
+    </div>`).join('');
+
+    main.innerHTML = `<div class="page-stack">
+      <div class="notice warning"><b>คำแจ้งจะไม่ปิดบัญชีทันที</b><p>ผู้ดูแลระบบต้องโทรตรวจสอบกับโรงพยาบาลก่อน ตรวจว่าบุคคลดังกล่าวไม่ได้ปฏิบัติงานแล้ว และตรวจประกาศที่ยังค้างอยู่ จึงจะเปลี่ยนบัญชีเป็น “ปิดใช้งาน” เพื่อรักษาประวัติเดิม</p></div>
+      <section class="panel"><div class="panel-header"><div><h2>ผู้ใช้งาน Active ของ ${U.esc(state.hospital?.name || 'โรงพยาบาล')}</h2><p>แสดงเฉพาะเพื่อนร่วมโรงพยาบาล ไม่แสดงเบอร์โทรและอีเมลเต็ม</p></div></div><div class="panel-body"><div class="member-list">${memberRows || emptyState('ยังไม่มีเพื่อนร่วมโรงพยาบาลรายอื่น','รายชื่อจะปรากฏเมื่อมีบัญชี Active มากกว่า 1 คน')}</div></div></section>
+      <section class="panel"><div class="panel-header"><div><h2>ประวัติคำแจ้งของฉัน</h2><p>กลับมาตรวจสอบสถานะย้อนหลังได้</p></div></div><div class="panel-body"><div class="report-history">${history || emptyState('ยังไม่เคยส่งคำแจ้ง','เมื่อส่งคำแจ้งแล้ว ประวัติจะอยู่ที่หน้านี้')}</div></div></section>
+    </div>`;
+
+    $$('[data-report-member]', main).forEach(button => button.addEventListener('click', () => {
+      const member = members.find(item => item.user_id === button.dataset.reportMember);
+      if (member) openMemberDepartureReport(member);
+    }));
+    $$('[data-cancel-member-report]', main).forEach(button => button.addEventListener('click', () => confirmCancelMemberDepartureReport(button.dataset.cancelMemberReport)));
+  }
+
+  function openMemberDepartureReport(member) {
+    openModal('แจ้งผู้ดูแลว่าบุคคลนี้ไม่ได้ปฏิบัติงานแล้ว', member.full_name || member.masked_email, `
+      <form id="memberDepartureForm">
+        <div class="notice warning"><b>ใช้เมื่อทราบข้อมูลจริงจากการทำงานร่วมกัน</b><p>คำแจ้งนี้ไม่ใช่การลบบัญชี และผู้ดูแลจะตรวจสอบกับโรงพยาบาลก่อนดำเนินการ</p></div>
+        <label>สาเหตุ<select id="memberDepartureReason" required>${Object.entries(MEMBER_REPORT_REASON_LABEL).map(([value,label]) => `<option value="${value}">${U.esc(label)}</option>`).join('')}</select></label>
+        <label>วันที่ปฏิบัติงานวันสุดท้าย (ถ้าทราบ)<input id="memberDepartureDate" type="date" max="${bangkokDateKey()}"></label>
+        <label>รายละเอียดที่ช่วยให้ตรวจสอบได้<textarea id="memberDepartureDetail" required maxlength="1000" placeholder="เช่น ลาออกตั้งแต่เดือน... หรือย้ายหน่วยแล้ว ปัจจุบันไม่ได้ปฏิบัติงานที่ธนาคารเลือด"></textarea></label>
+        <label class="check-row"><input id="memberDepartureConfirm" type="checkbox" required><span>ยืนยันว่ารายงานตามข้อมูลที่ทราบจริง และเข้าใจว่าผู้ดูแลต้องตรวจสอบก่อนปิดบัญชี</span></label>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="submitMemberDepartureBtn" type="submit" class="btn btn-primary">ส่งคำแจ้ง</button></div>
+      </form>`);
+    $('#memberDepartureForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = $('#submitMemberDepartureBtn');
+      try {
+        if (!$('#memberDepartureConfirm').checked) throw new Error('กรุณายืนยันข้อมูลก่อนส่งคำแจ้ง');
+        setButtonBusy(button, true, 'กำลังส่ง...');
+        const { error } = await state.supabase.rpc('bent_submit_member_departure_report', {
+          p_reported_user_id: member.user_id,
+          p_reason_category: $('#memberDepartureReason').value,
+          p_detail: $('#memberDepartureDetail').value.trim(),
+          p_last_working_date: $('#memberDepartureDate').value || null
+        });
+        if (error) throw error;
+        closeModal();
+        toast('ส่งคำแจ้งแล้ว', 'ผู้ดูแลระบบจะตรวจสอบก่อนเปลี่ยนสถานะบัญชี', 'success', 7000);
+        await renderHospitalMembers();
+      } catch (error) { toast('ส่งคำแจ้งไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+  }
+
+  function confirmCancelMemberDepartureReport(reportId) {
+    openModal('ยืนยันยกเลิกคำแจ้ง', 'คำแจ้งที่ยกเลิกจะยังเก็บเป็นประวัติ', `
+      <div class="notice warning"><b>ยกเลิกได้เฉพาะรายการที่ยังรอตรวจสอบ</b><p>หากผู้ดูแลดำเนินการไปแล้ว จะไม่สามารถยกเลิกจากหน้านี้ได้</p></div>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-close-modal>กลับ</button><button id="confirmCancelMemberReportBtn" type="button" class="btn btn-danger">ยืนยันยกเลิก</button></div>`);
+    $('#confirmCancelMemberReportBtn').addEventListener('click', async () => {
+      const button = $('#confirmCancelMemberReportBtn');
+      try {
+        setButtonBusy(button, true, 'กำลังยกเลิก...');
+        const { error } = await state.supabase.rpc('bent_cancel_member_departure_report', { p_report_id: reportId });
+        if (error) throw error;
+        closeModal(); toast('ยกเลิกคำแจ้งแล้ว', '', 'success'); await renderHospitalMembers();
+      } catch (error) { toast('ยกเลิกไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+  }
+
+  async function renderSupport() {
+    setPage('ติดต่อผู้ดูแล', 'ส่งคำถาม ข้อเสนอแนะ หรือแจ้งปัญหา และกลับมาดูประวัติได้');
+    main.innerHTML = '<div class="loading-block"><div class="spinner"></div></div>';
+    const { data: threads, error } = await state.supabase
+      .from('bent_support_threads')
+      .select('*')
+      .eq('created_by', state.profile.id)
+      .order('last_message_at', { ascending: false });
+    if (error) throw error;
+
+    const threadRows = (threads || []).map(thread => {
+      const unread = thread.last_message_at && (!thread.user_last_read_at || new Date(thread.last_message_at) > new Date(thread.user_last_read_at));
+      return `<button type="button" class="support-thread-row ${unread ? 'unread' : ''}" data-support-thread="${thread.id}">
+        <div><b>${U.esc(thread.subject)}</b><span>${U.esc(SUPPORT_CATEGORY_LABEL[thread.category] || thread.category)} · อัปเดต ${U.fmtDateTime(thread.last_message_at)}</span></div>
+        <span class="badge badge-${U.esc(thread.status)}">${U.esc(SUPPORT_STATUS_LABEL[thread.status] || thread.status)}</span>
+      </button>`;
+    }).join('');
+
+    main.innerHTML = `<div class="page-stack support-layout">
+      <section class="panel"><div class="panel-header"><div><h2>ส่งข้อความใหม่</h2><p>สร้างหัวข้อแยกกัน เพื่อกลับมาติดตามแต่ละเรื่องได้ง่าย</p></div></div><div class="panel-body">
+        <form id="supportNewThreadForm">
+          <div class="field-grid"><label>ประเภท<select id="supportCategory">${Object.entries(SUPPORT_CATEGORY_LABEL).map(([value,label]) => `<option value="${value}">${U.esc(label)}</option>`).join('')}</select></label><label>หัวข้อ<input id="supportSubject" required minlength="4" maxlength="160" placeholder="สรุปเรื่องที่ต้องการติดต่อ"></label></div>
+          <label>ข้อความ<textarea id="supportMessage" required minlength="2" maxlength="2000" placeholder="อธิบายคำถาม ปัญหา หรือข้อเสนอแนะ"></textarea></label>
+          <div class="notice warning"><b>ไม่ส่งข้อมูลผู้ป่วยหรือเลขถุงเลือด</b><p>ช่องนี้ใช้คุยเรื่องการใช้งานระบบเท่านั้น ห้ามใส่ชื่อ HN Diagnosis Donor ID Barcode หรือ QR Code</p></div>
+          <div class="modal-actions"><button id="createSupportThreadBtn" type="submit" class="btn btn-primary">ส่งข้อความถึงผู้ดูแล</button></div>
+        </form>
+      </div></section>
+      <section class="panel"><div class="panel-header"><div><h2>ประวัติการติดต่อ</h2><p>กดหัวข้อเพื่อเปิดบทสนทนาและส่งข้อความต่อ</p></div><button id="refreshSupportBtn" type="button" class="btn btn-soft">รีเฟรช</button></div><div class="panel-body"><div class="support-thread-list">${threadRows || emptyState('ยังไม่มีประวัติการติดต่อ','ส่งข้อความใหม่ได้จากแบบฟอร์มด้านบน')}</div></div></section>
+    </div>`;
+
+    $('#supportNewThreadForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = $('#createSupportThreadBtn');
+      try {
+        setButtonBusy(button, true, 'กำลังส่ง...');
+        const { data, error: createError } = await state.supabase.rpc('bent_create_support_thread', {
+          p_category: $('#supportCategory').value,
+          p_subject: $('#supportSubject').value.trim(),
+          p_message: $('#supportMessage').value.trim()
+        });
+        if (createError) throw createError;
+        toast('ส่งข้อความแล้ว', 'กลับมาดูคำตอบได้ที่ประวัติการติดต่อ', 'success');
+        await renderSupport();
+        await openSupportThread(String(data), false, () => renderSupport());
+      } catch (error) { toast('ส่งข้อความไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+    $('#refreshSupportBtn').addEventListener('click', () => renderSupport().catch(error => toast('รีเฟรชไม่สำเร็จ', U.friendlyError(error), 'error')));
+    $$('[data-support-thread]', main).forEach(button => button.addEventListener('click', () => openSupportThread(button.dataset.supportThread, false, () => renderSupport())));
+  }
+
+  async function openSupportThread(threadId, adminMode = false, refreshList = null) {
+    const [threadResult, messageResult] = await Promise.all([
+      state.supabase.from('bent_support_threads').select('*').eq('id', threadId).maybeSingle(),
+      state.supabase.from('bent_support_messages').select('*').eq('thread_id', threadId).order('created_at', { ascending: true }).order('id', { ascending: true })
+    ]);
+    if (threadResult.error) throw threadResult.error;
+    if (messageResult.error) throw messageResult.error;
+    const thread = threadResult.data;
+    if (!thread) throw new Error('SUPPORT_THREAD_NOT_FOUND');
+
+    await state.supabase.rpc('bent_mark_support_thread_read', { p_thread_id: threadId });
+    const messages = messageResult.data || [];
+    const chat = messages.map(message => `<div class="chat-message ${message.sender_role === 'system_admin' ? 'admin' : 'user'}">
+      <div class="chat-bubble"><b>${U.esc(message.sender_role === 'system_admin' ? 'ผู้ดูแลระบบ' : message.sender_name)}</b><p>${U.esc(message.message).replaceAll('\n','<br>')}</p><small>${U.fmtDateTime(message.created_at)}</small></div>
+    </div>`).join('');
+
+    openModal(thread.subject, `${SUPPORT_CATEGORY_LABEL[thread.category] || thread.category} · ${SUPPORT_STATUS_LABEL[thread.status] || thread.status}`, `
+      ${adminMode ? `<div class="support-owner"><b>${U.esc(thread.created_by_name)}</b><span>${U.esc(thread.created_by_email)} · ${U.esc(thread.hospital_name || '-')}</span></div>` : ''}
+      <div id="supportChatLog" class="chat-log">${chat || emptyState('ยังไม่มีข้อความ','')}</div>
+      <form id="supportReplyForm" class="support-reply-form">
+        <label>พิมพ์ข้อความ<textarea id="supportReplyMessage" required minlength="2" maxlength="2000" placeholder="พิมพ์ข้อความตอบกลับ"></textarea></label>
+        <div class="modal-actions">
+          ${adminMode ? `<button id="supportToggleResolvedBtn" type="button" class="btn ${thread.status === 'resolved' ? 'btn-soft' : 'btn-ghost'}">${thread.status === 'resolved' ? 'เปิดเรื่องอีกครั้ง' : 'ปิดเรื่อง'}</button>` : ''}
+          <button id="refreshSupportThreadBtn" type="button" class="btn btn-ghost">รีเฟรช</button>
+          <button id="sendSupportReplyBtn" type="submit" class="btn btn-primary">ส่งข้อความ</button>
+        </div>
+      </form>`);
+    const log = $('#supportChatLog');
+    if (log) log.scrollTop = log.scrollHeight;
+
+    $('#refreshSupportThreadBtn').addEventListener('click', () => openSupportThread(threadId, adminMode, refreshList).catch(error => toast('รีเฟรชไม่สำเร็จ', U.friendlyError(error), 'error')));
+    $('#supportReplyForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = $('#sendSupportReplyBtn');
+      try {
+        setButtonBusy(button, true, 'กำลังส่ง...');
+        const { error } = await state.supabase.rpc('bent_send_support_message', { p_thread_id: threadId, p_message: $('#supportReplyMessage').value.trim() });
+        if (error) throw error;
+        if (refreshList) await refreshList();
+        await openSupportThread(threadId, adminMode, refreshList);
+      } catch (error) { toast('ส่งข้อความไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+    if (adminMode) {
+      $('#supportToggleResolvedBtn').addEventListener('click', async () => {
+        const button = $('#supportToggleResolvedBtn');
+        try {
+          setButtonBusy(button, true, 'กำลังบันทึก...');
+          const nextStatus = thread.status === 'resolved' ? 'waiting_user' : 'resolved';
+          const { error } = await state.supabase.rpc('bent_admin_set_support_status', { p_thread_id: threadId, p_status: nextStatus });
+          if (error) throw error;
+          if (refreshList) await refreshList();
+          await openSupportThread(threadId, adminMode, refreshList);
+        } catch (error) { toast('เปลี่ยนสถานะไม่สำเร็จ', U.friendlyError(error), 'error'); }
+        finally { setButtonBusy(button, false); }
+      });
+    }
+  }
+
   function renderGuide() {
     setPage('คู่มือการใช้งาน', 'คนที่ไม่เคยใช้ BENT สามารถเริ่มจากหน้านี้');
     main.innerHTML = `
@@ -1272,8 +1736,11 @@
           <article class="guide-card"><h3>4. ประกาศว่ามีเลือด</h3><ol><li>เลือก “มีเลือดพร้อมให้ติดต่อ”</li><li>ระบุผลิตภัณฑ์ หมู่เลือด จำนวน วันหมดอายุ และแหล่งที่มา</li><li>เลือกแอนติเจนเฉพาะตัวที่ต้องการผลลบ</li><li>แนบรูปได้ แต่ไม่บังคับ</li><li>ตรวจสรุปแล้วกด “สร้างประกาศ”</li></ol></article>
           <article class="guide-card"><h3>5. ประกาศว่าต้องการเลือด</h3><ol><li>เลือก “ต้องการเลือด”</li><li>ระบุผลิตภัณฑ์ หมู่เลือด จำนวน วันที่ต้องการ และความเร่งด่วน</li><li>เลือกแอนติเจนที่ต้องการผลลบตามเงื่อนไข</li><li>กรอกผู้ติดต่อ แล้วสร้างประกาศ</li></ol></article>
           <article class="guide-card"><h3>6. ระหว่างประสานงานและปิดรายการ</h3><ol><li>เมื่อเริ่มคุยกับโรงพยาบาลอื่น กด “กำลังประสานงาน”</li><li>แก้จำนวนคงเหลือ/ยังต้องการได้</li><li>เมื่อจบเรื่อง กด “ปิดรายการ”</li><li>เลือกเหตุผล ผลการประสานงาน และจำนวนที่สำเร็จ</li><li>รูปจะถูกซ่อนทันที แล้วระบบจึงลบจาก Google Drive</li></ol></article>
-          ${isAdmin() ? `<article class="guide-card"><h3>7. สำหรับผู้ดูแลระบบ</h3><ol><li>ทุกแท็บมีตัวกรองสำหรับค้นหาและลดรายการ</li><li>กำหนดจังหวัดก่อนเลือกโรงพยาบาลให้ผู้ใช้</li><li>สถิติ “โรงพยาบาลที่มีผู้ใช้งาน Active” นับเฉพาะโรงพยาบาลที่ยังมีบัญชี Active</li><li>แท็บ “ประกาศทั้งหมด” สามารถลบประกาศถาวรได้ หลังตรวจสอบและยืนยัน</li></ol></article>` : ''}
-          <article class="guide-card"><h3>${isAdmin() ? '8' : '7'}. การแนบรูปอย่างปลอดภัย</h3><ul class="danger-list"><li>ห้ามชื่อผู้ป่วย HN เลขบัตรประชาชน Diagnosis</li><li>ห้าม Donor ID เลขถุงเลือด Barcode และ QR Code</li><li>ครอบตัดหรือปิดบังข้อมูลก่อนเลือกไฟล์</li><li>รูปเป็นข้อมูลประกอบ ไม่ใช้แทนฉลากจริงหรือ SOP</li></ul></article>
+          <article class="guide-card"><h3>7. ขอย้ายโรงพยาบาล</h3><ol><li>เปิดเมนู “ข้อมูลบัญชีของฉัน”</li><li>อ่านเงื่อนไขก่อนยื่นคำขอ แล้วเลือกโรงพยาบาลใหม่</li><li>ปิดหรือส่งมอบประกาศที่ยังค้างให้เรียบร้อย</li><li>ผู้ดูแลจะโทรตรวจสอบทั้งโรงพยาบาลเดิมและโรงพยาบาลใหม่</li><li>ประกาศเก่ายังคงเป็นของโรงพยาบาลเดิม</li></ol></article>
+          <article class="guide-card"><h3>8. แจ้งเพื่อนร่วมโรงพยาบาลที่พ้นสภาพ</h3><ol><li>เปิดเมนู “สมาชิกโรงพยาบาล”</li><li>เลือกชื่อบุคคลที่ลาออก ย้ายโรงพยาบาล หรือไม่ได้ปฏิบัติงานที่หน่วยเดิมแล้ว</li><li>ระบุข้อมูลที่ทราบจริงและส่งคำแจ้ง</li><li>บัญชีจะยังไม่ถูกปิดทันที ผู้ดูแลต้องโทรตรวจสอบก่อน</li><li>กลับมาดูสถานะคำแจ้งย้อนหลังได้จากหน้าเดิม</li></ol></article>
+          <article class="guide-card"><h3>9. ติดต่อผู้ดูแล</h3><ol><li>เปิดเมนู “ติดต่อผู้ดูแล”</li><li>เลือกประเภท ตั้งหัวข้อ และพิมพ์ข้อความ</li><li>แต่ละเรื่องเก็บเป็นบทสนทนาแยกกัน</li><li>กดหัวข้อเดิมเพื่ออ่านคำตอบหรือส่งข้อความต่อ</li><li>ห้ามส่งข้อมูลผู้ป่วย ผู้บริจาค หรือเลขถุงเลือด</li></ol></article>
+          ${isAdmin() ? `<article class="guide-card"><h3>10. สำหรับผู้ดูแลระบบ</h3><ol><li>ทุกแท็บมีตัวกรองสำหรับค้นหาและลดรายการ</li><li>แท็บ “แจ้งพ้นสภาพ” ต้องบันทึกชื่อผู้ให้ข้อมูล วันเวลาที่โทร และผลตรวจสอบก่อนปิดบัญชี</li><li>ต้องจัดการประกาศที่ยังเปิดของผู้ถูกรายงานให้เรียบร้อยก่อน</li><li>แท็บ “ข้อความ/ข้อเสนอแนะ” ใช้ตอบแชทและปิดเรื่องเมื่อดำเนินการเสร็จ</li></ol></article>` : ''}
+          <article class="guide-card"><h3>${isAdmin() ? '11' : '10'}. การแนบรูปอย่างปลอดภัย</h3><ul class="danger-list"><li>ห้ามชื่อผู้ป่วย HN เลขบัตรประชาชน Diagnosis</li><li>ห้าม Donor ID เลขถุงเลือด Barcode และ QR Code</li><li>ครอบตัดหรือปิดบังข้อมูลก่อนเลือกไฟล์</li><li>รูปเป็นข้อมูลประกอบ ไม่ใช้แทนฉลากจริงหรือ SOP</li></ul></article>
         </section>
         <section class="panel"><div class="panel-header"><div><h2>ความหมายสถานะ</h2><p>ดูแล้วรู้ทันทีว่ารายการอยู่ขั้นไหน</p></div></div><div class="panel-body"><div class="antigen-line"><span class="badge badge-open">เปิดรับการติดต่อ</span><span class="badge badge-coordinating">กำลังประสานงาน</span><span class="badge badge-closed">ปิดแล้ว</span><span class="badge badge-cancelled">ยกเลิก</span><span class="badge badge-expired">หมดอายุ</span></div></div></section>
         <div class="notice warning"><b>หลักสำคัญที่สุด</b><p>ไม่บันทึกข้อมูลผู้ป่วย ผู้บริจาค หรือข้อมูลที่ระบุถุงเลือดเฉพาะถุง และต้องรอข้อความยืนยันจากฐานข้อมูลก่อนถือว่ารายการสำเร็จ</p></div>
@@ -1284,7 +1751,7 @@
     main.innerHTML = `
       <div class="page-stack">
         <div class="admin-tabs">
-          ${[['requests','คำขอเปิดบัญชี'],['users','ผู้ใช้งาน'],['hospitals','โรงพยาบาล'],['announcements','ประกาศทั้งหมด'],['components','ผลิตภัณฑ์โลหิต'],['antigens','แอนติเจน'],['sources','แหล่งที่มา'],['stats','สถิติการใช้งาน'],['images','จัดการรูป'],['audit','ประวัติการเปลี่ยนแปลง']].map(([key,label]) => `<button class="admin-tab ${state.adminTab === key ? 'active' : ''}" data-admin-tab="${key}">${label}</button>`).join('')}
+          ${[['requests','คำขอเปิดบัญชี'],['transfers','คำขอย้าย รพ.'],['departures','แจ้งพ้นสภาพ'],['support','ข้อความ/ข้อเสนอแนะ'],['users','ผู้ใช้งาน'],['hospitals','โรงพยาบาล'],['announcements','ประกาศทั้งหมด'],['components','ผลิตภัณฑ์โลหิต'],['antigens','แอนติเจน'],['sources','แหล่งที่มา'],['stats','สถิติการใช้งาน'],['images','จัดการรูป'],['audit','ประวัติการเปลี่ยนแปลง']].map(([key,label]) => `<button class="admin-tab ${state.adminTab === key ? 'active' : ''}" data-admin-tab="${key}">${label}</button>`).join('')}
         </div>
         <div id="adminContent"><div class="loading-block"><div class="spinner"></div></div></div>
       </div>`;
@@ -1298,6 +1765,9 @@
     host.innerHTML = '<div class="loading-block"><div class="spinner"></div></div>';
     try {
       if (tab === 'requests') await adminAccountRequests(host);
+      else if (tab === 'transfers') await adminHospitalTransfers(host);
+      else if (tab === 'departures') await adminMemberDepartureReports(host);
+      else if (tab === 'support') await adminSupportThreads(host);
       else if (tab === 'users') await adminUsers(host);
       else if (tab === 'hospitals') await adminHospitals(host);
       else if (tab === 'announcements') adminAnnouncements(host);
@@ -1352,6 +1822,10 @@
   async function adminAccountRequests(host) {
     const { data, error } = await state.supabase.from('bent_account_requests').select('*').order('requested_at', { ascending: false });
     if (error) throw error;
+
+    // Every time the account-request tab is opened or refreshed, begin with pending requests.
+    // Other filters remain as the admin last selected, and the status can still be changed manually.
+    state.adminFilters.requests = { ...adminFilterState('requests'), status: 'pending' };
     const filters = adminFilterState('requests');
     const actions = request => {
       const deleteLabel = request.auth_user_id ? 'ลบบัญชี' : 'ลบคำขอ';
@@ -1662,6 +2136,345 @@
     } catch (error) { toast('ส่งลิงก์ไม่สำเร็จ', U.friendlyError(error), 'error'); }
   }
 
+  async function adminHospitalTransfers(host) {
+    const { data, error } = await state.supabase
+      .from('bent_hospital_transfer_requests')
+      .select(`
+        *,
+        profile:bent_profiles!bent_hospital_transfer_requests_user_id_fkey(id,email,full_name,phone,status,hospital_id),
+        from_hospital:bent_hospitals!bent_hospital_transfer_requests_from_hospital_id_fkey(id,name,province,phone,is_active),
+        to_hospital:bent_hospitals!bent_hospital_transfer_requests_to_hospital_id_fkey(id,name,province,phone,is_active)
+      `)
+      .order('requested_at', { ascending: false });
+    if (error) throw error;
+
+    const userIds = [...new Set((data || []).map(row => row.user_id).filter(Boolean))];
+    let activeItems = [];
+    if (userIds.length) {
+      const result = await state.supabase.from('bent_announcements')
+        .select('id,created_by,hospital_id,status')
+        .in('created_by', userIds)
+        .in('status', ['open','coordinating']);
+      if (result.error) throw result.error;
+      activeItems = result.data || [];
+    }
+    (data || []).forEach(row => {
+      row._openItems = activeItems.filter(item => item.created_by === row.user_id && item.hospital_id === row.from_hospital_id).length;
+    });
+
+    state.adminFilters.transfers = { ...adminFilterState('transfers'), status: 'pending_verification' };
+    const filters = adminFilterState('transfers');
+    const statusOptions = ['pending_verification','approved','rejected','cancelled'];
+    const checklist = row => `<div class="transfer-checklist-mini"><span class="${row.old_hospital_verified_at ? 'done' : ''}">${row.old_hospital_verified_at ? '✓' : '○'} รพ.เดิม</span><span class="${row.new_hospital_verified_at ? 'done' : ''}">${row.new_hospital_verified_at ? '✓' : '○'} รพ.ใหม่</span><span class="${row.no_outstanding_items_confirmed && row._openItems === 0 ? 'done' : ''}">${row._openItems === 0 ? (row.no_outstanding_items_confirmed ? '✓' : '○') : '!' } รายการค้าง ${row._openItems}</span></div>`;
+    const actions = row => `<button class="btn btn-soft" data-action="admin-review-transfer" data-transfer="${row.id}">${row.status === 'pending_verification' ? 'ตรวจสอบ' : 'ดูรายละเอียด'}</button>`;
+    const rowHtml = row => `<tr><td><b>${U.esc(row.profile?.full_name || row.user_full_name || '-')}</b><br><small>${U.esc(row.profile?.email || row.user_email)}</small></td><td>${U.esc(row.from_hospital?.name || '-')}<br><small>${U.esc(row.from_hospital?.province || '-')}</small></td><td>${U.esc(row.to_hospital?.name || '-')}<br><small>${U.esc(row.to_hospital?.province || '-')}</small></td><td>${checklist(row)}</td><td><span class="badge badge-${row.status}">${U.esc(U.statusLabel[row.status] || row.status)}</span><br><small>${U.fmtDateTime(row.requested_at)}</small></td><td>${actions(row)}</td></tr>`;
+    const mobileHtml = row => `<div class="mobile-data-card"><b>${U.esc(row.profile?.full_name || row.user_full_name || '-')}</b><span>${U.esc(row.from_hospital?.name || '-')} → ${U.esc(row.to_hospital?.name || '-')}</span>${checklist(row)}<div class="inline-actions"><span class="badge badge-${row.status}">${U.esc(U.statusLabel[row.status] || row.status)}</span>${actions(row)}</div></div>`;
+
+    host.innerHTML = `<div class="page-stack">
+      ${adminFilterBar(`
+        <label>ค้นหา<input data-admin-filter="text" value="${U.esc(filters.text || '')}" placeholder="ชื่อ อีเมล โรงพยาบาล"></label>
+        <label>สถานะ<select data-admin-filter="status"><option value="">ทั้งหมด</option>${statusOptions.map(value => `<option value="${value}">${U.esc(U.statusLabel[value] || value)}</option>`).join('')}</select></label>
+        <label>จังหวัดปลายทาง<select data-admin-filter="province"><option value="">ทุกจังหวัด</option>${THAI_PROVINCES.map(p => `<option value="${U.esc(p)}">${U.esc(p)}</option>`).join('')}</select></label>
+      `, 'เปิดแท็บนี้เมื่อมีผู้ใช้ยื่นคำขอย้ายโรงพยาบาล')}
+      <section class="panel"><div class="panel-header"><div><h2 id="adminTransferCount">คำขอย้ายโรงพยาบาล</h2><p>โทรตรวจสอบทั้งสองฝั่ง บันทึกผู้ให้ข้อมูล และตรวจรายการค้างก่อนอนุมัติ</p></div></div><div class="panel-body" id="adminTransferResults"></div></section>
+    </div>`;
+    host.dataset.transfers = JSON.stringify(data || []);
+
+    const renderRows = () => {
+      const f = adminFilterState('transfers');
+      const text = String(f.text || '').trim().toLowerCase();
+      const rows = (data || []).filter(row => {
+        const searchable = [row.profile?.full_name,row.user_full_name,row.profile?.email,row.user_email,row.from_hospital?.name,row.to_hospital?.name].join(' ').toLowerCase();
+        return (!text || searchable.includes(text))
+          && (!f.status || row.status === f.status)
+          && (!f.province || row.to_hospital?.province === f.province);
+      });
+      $('#adminTransferCount').textContent = `คำขอย้ายโรงพยาบาล ${rows.length.toLocaleString('th-TH')} จาก ${(data || []).length.toLocaleString('th-TH')} รายการ`;
+      $('#adminTransferResults').innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้ใช้</th><th>โรงพยาบาลเดิม</th><th>โรงพยาบาลใหม่</th><th>การตรวจสอบ</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(rowHtml).join('')}</tbody></table></div><div class="mobile-cards">${rows.map(mobileHtml).join('')}</div>` : emptyState('ไม่พบคำขอย้ายโรงพยาบาลที่ตรงกับตัวกรอง','ลองเปลี่ยนสถานะหรือล้างตัวกรอง');
+    };
+    bindAdminFilterControls('transfers', renderRows);
+    renderRows();
+  }
+
+  function openAdminHospitalTransfer(request) {
+    if (!request) return;
+    const editable = request.status === 'pending_verification';
+    const oldConfirmed = Boolean(request.old_hospital_verified_at);
+    const newConfirmed = Boolean(request.new_hospital_verified_at);
+    const noItemsConfirmed = Boolean(request.no_outstanding_items_confirmed);
+    openModal('ตรวจสอบคำขอย้ายโรงพยาบาล', request.profile?.email || request.user_email, `
+      <div class="request-hospital-summary"><div><span>ผู้ใช้งาน</span><b>${U.esc(request.profile?.full_name || request.user_full_name || '-')}</b><small>${U.esc(request.profile?.phone || request.user_phone || 'ไม่มีเบอร์ผู้ใช้')}</small></div><div><span>โรงพยาบาลเดิม</span><b>${U.esc(request.from_hospital?.name || '-')}</b><small>${U.esc(request.from_hospital?.province || '-')} · โทร ${U.esc(request.from_hospital?.phone || 'ยังไม่มีเบอร์ใน Master')}</small></div><div><span>โรงพยาบาลใหม่</span><b>${U.esc(request.to_hospital?.name || '-')}</b><small>${U.esc(request.to_hospital?.province || '-')} · โทร ${U.esc(request.to_hospital?.phone || 'ยังไม่มีเบอร์ใน Master')}</small></div></div>
+      <div class="notice warning"><b>โรงพยาบาลเดิมไม่มีสิทธิ์ขัดขวางการย้าย</b><p>ให้ติดต่อเพื่อยืนยันข้อเท็จจริงและตรวจงานค้างเท่านั้น การติ๊กว่า “ยืนยันแล้ว” หมายถึงโทรตรวจสอบและบันทึกผลแล้ว ไม่ได้หมายถึงต้องได้รับอนุญาตจากโรงพยาบาลเดิม</p></div>
+      <div class="info-box"><b>เหตุผลที่ผู้ใช้แจ้ง</b><p>${U.esc(request.reason)}</p>${request.requested_effective_date ? `<p>วันที่คาดว่าจะเริ่มงาน: ${U.fmtDate(request.requested_effective_date)}</p>` : ''}</div>
+      <form id="adminTransferForm">
+        <fieldset class="transfer-verification-box" ${editable ? '' : 'disabled'}><legend>1. ตรวจสอบโรงพยาบาลเดิม</legend>
+          <div class="field-grid"><label>ชื่อผู้ให้ข้อมูล<input id="transferOldContactName" maxlength="160" value="${U.esc(request.old_hospital_contact_name || '')}"></label><label>เบอร์โทรที่ใช้ติดต่อ<input id="transferOldContactPhone" maxlength="40" value="${U.esc(request.old_hospital_contact_phone || request.from_hospital?.phone || '')}"></label></div>
+          <label>วันที่และเวลาที่โทร<input id="transferOldContactedAt" type="datetime-local" value="${dateTimeLocalValue(request.old_hospital_contacted_at || request.old_hospital_verified_at)}"></label>
+          <label>ผลการตรวจสอบ<textarea id="transferOldResult" maxlength="1500" placeholder="เช่น ยืนยันว่าไม่ได้ปฏิบัติงานแล้ว / ติดต่อไม่ได้ / ไม่ประสงค์ให้ข้อมูล">${U.esc(request.old_hospital_verification_result || '')}</textarea></label>
+          <label class="check-row"><input id="transferOldConfirmed" type="checkbox" ${oldConfirmed ? 'checked' : ''}><span>ยืนยันว่าติดต่อและบันทึกผลจากโรงพยาบาลเดิมแล้ว</span></label>
+          ${request.old_hospital_verified_at ? `<p class="field-help">บันทึกเมื่อ ${U.fmtDateTime(request.old_hospital_verified_at)}</p>` : ''}
+        </fieldset>
+        <fieldset class="transfer-verification-box" ${editable ? '' : 'disabled'}><legend>2. ตรวจสอบโรงพยาบาลใหม่</legend>
+          <div class="field-grid"><label>ชื่อผู้ให้ข้อมูล<input id="transferNewContactName" maxlength="160" value="${U.esc(request.new_hospital_contact_name || '')}"></label><label>เบอร์โทรที่ใช้ติดต่อ<input id="transferNewContactPhone" maxlength="40" value="${U.esc(request.new_hospital_contact_phone || request.to_hospital?.phone || '')}"></label></div>
+          <label>วันที่และเวลาที่โทร<input id="transferNewContactedAt" type="datetime-local" value="${dateTimeLocalValue(request.new_hospital_contacted_at || request.new_hospital_verified_at)}"></label>
+          <label>ผลการตรวจสอบ<textarea id="transferNewResult" maxlength="1500" placeholder="เช่น ยืนยันว่าเริ่มปฏิบัติงานในหน่วยธนาคารเลือดแล้ว">${U.esc(request.new_hospital_verification_result || '')}</textarea></label>
+          <label class="check-row"><input id="transferNewConfirmed" type="checkbox" ${newConfirmed ? 'checked' : ''}><span>ยืนยันว่าติดต่อและบันทึกผลจากโรงพยาบาลใหม่แล้ว</span></label>
+          ${request.new_hospital_verified_at ? `<p class="field-help">บันทึกเมื่อ ${U.fmtDateTime(request.new_hospital_verified_at)}</p>` : ''}
+        </fieldset>
+        <fieldset class="transfer-verification-box" ${editable ? '' : 'disabled'}><legend>3. ตรวจรายการที่ยังต้องรับผิดชอบ</legend>
+          <div class="hospital-status-card ${request._openItems === 0 ? 'found' : 'missing'}"><span>รายการเปิด/กำลังประสานงานของผู้ใช้นี้ที่โรงพยาบาลเดิม</span><b>${request._openItems || 0} รายการ</b><p>${request._openItems === 0 ? 'สามารถยืนยันว่าไม่มีรายการค้างได้' : 'ต้องปิดหรือส่งมอบรายการก่อน จึงจะอนุมัติการย้ายได้'}</p></div>
+          <label class="check-row"><input id="transferNoItemsConfirmed" type="checkbox" ${noItemsConfirmed ? 'checked' : ''} ${request._openItems > 0 ? 'disabled' : ''}><span>ยืนยันว่าไม่มีรายการในระบบที่ผู้ใช้นี้ยังต้องรับผิดชอบ</span></label>
+        </fieldset>
+        <label>หมายเหตุผู้ดูแล<textarea id="transferAdminNote" maxlength="1500">${U.esc(request.admin_note || '')}</textarea></label>
+        <div class="modal-actions">
+          ${editable ? `<button id="rejectTransferBtn" type="button" class="btn btn-danger">ไม่อนุมัติ</button><button id="saveTransferCheckBtn" type="button" class="btn btn-soft">บันทึกผลตรวจสอบ</button><button id="approveTransferBtn" type="button" class="btn btn-primary">อนุมัติการย้ายโรงพยาบาล</button>` : `<button type="button" class="btn btn-primary" data-close-modal>ปิด</button>`}
+        </div>
+      </form>`);
+    if (!editable) return;
+
+    const payload = () => ({
+      p_request_id: request.id,
+      p_old_hospital_confirmed: $('#transferOldConfirmed').checked,
+      p_old_hospital_contact_name: $('#transferOldContactName').value.trim() || null,
+      p_old_hospital_contact_phone: $('#transferOldContactPhone').value.trim() || null,
+      p_old_hospital_contacted_at: $('#transferOldContactedAt').value ? new Date($('#transferOldContactedAt').value).toISOString() : null,
+      p_old_hospital_verification_result: $('#transferOldResult').value.trim() || null,
+      p_new_hospital_confirmed: $('#transferNewConfirmed').checked,
+      p_new_hospital_contact_name: $('#transferNewContactName').value.trim() || null,
+      p_new_hospital_contact_phone: $('#transferNewContactPhone').value.trim() || null,
+      p_new_hospital_contacted_at: $('#transferNewContactedAt').value ? new Date($('#transferNewContactedAt').value).toISOString() : null,
+      p_new_hospital_verification_result: $('#transferNewResult').value.trim() || null,
+      p_no_outstanding_items_confirmed: $('#transferNoItemsConfirmed').checked,
+      p_admin_note: $('#transferAdminNote').value.trim() || null
+    });
+    const updateApprovalState = () => {
+      $('#approveTransferBtn').disabled = !($('#transferOldConfirmed').checked && $('#transferNewConfirmed').checked && $('#transferNoItemsConfirmed').checked && request._openItems === 0);
+    };
+    const bindContactConfirmation = (checkboxId, dateId) => {
+      $(`#${checkboxId}`).addEventListener('change', () => {
+        if ($(`#${checkboxId}`).checked && !$(`#${dateId}`).value) $(`#${dateId}`).value = dateTimeLocalValue(new Date());
+        updateApprovalState();
+      });
+    };
+    bindContactConfirmation('transferOldConfirmed', 'transferOldContactedAt');
+    bindContactConfirmation('transferNewConfirmed', 'transferNewContactedAt');
+    $('#transferNoItemsConfirmed').addEventListener('change', updateApprovalState);
+    updateApprovalState();
+
+    const saveChecks = async () => {
+      const { error } = await state.supabase.rpc('bent_admin_update_hospital_transfer', payload());
+      if (error) throw error;
+    };
+
+    $('#saveTransferCheckBtn').addEventListener('click', async () => {
+      const button = $('#saveTransferCheckBtn');
+      try { setButtonBusy(button, true, 'กำลังบันทึก...'); await saveChecks(); toast('บันทึกผลตรวจสอบแล้ว', 'ข้อมูลผู้ให้ข้อมูล วันที่ และผลตรวจสอบถูกเก็บใน Audit Log แล้ว', 'success'); closeModal(); await loadAdminTab('transfers'); }
+      catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+
+    $('#approveTransferBtn').addEventListener('click', async () => {
+      const button = $('#approveTransferBtn');
+      try {
+        setButtonBusy(button, true, 'กำลังย้ายบัญชี...');
+        await saveChecks();
+        const { data, error } = await state.supabase.rpc('bent_admin_approve_hospital_transfer', { p_request_id: request.id });
+        if (error) throw error;
+        if (data?.user_id === state.profile?.id) {
+          state.profile.hospital_id = data.to_hospital_id;
+          state.hospital = state.masters.hospitals.find(h => h.id === data.to_hospital_id) || state.hospital;
+          renderUserBlock();
+        }
+        closeModal(); toast('อนุมัติการย้ายแล้ว', `${request.from_hospital?.name || '-'} → ${request.to_hospital?.name || '-'}`, 'success', 8000); await loadAdminTab('transfers');
+      } catch (error) { toast('อนุมัติไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+
+    $('#rejectTransferBtn').addEventListener('click', async () => {
+      const button = $('#rejectTransferBtn');
+      try {
+        const note = $('#transferAdminNote').value.trim();
+        if (note.length < 3) throw new Error('TRANSFER_REJECTION_NOTE_REQUIRED');
+        setButtonBusy(button, true, 'กำลังบันทึก...');
+        const { error } = await state.supabase.rpc('bent_admin_reject_hospital_transfer', { p_request_id: request.id, p_admin_note: note });
+        if (error) throw error;
+        closeModal(); toast('บันทึกว่าไม่อนุมัติแล้ว', '', 'success'); await loadAdminTab('transfers');
+      } catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+  }
+
+
+  async function adminMemberDepartureReports(host) {
+    const { data, error } = await state.supabase
+      .from('bent_member_departure_reports')
+      .select('*, hospital:bent_hospitals(id,name,province), reporter:bent_profiles!bent_member_departure_reports_reported_by_fkey(id,full_name,email)')
+      .order('requested_at', { ascending: false });
+    if (error) throw error;
+
+    const reports = data || [];
+    const targetIds = [...new Set(reports.map(report => report.reported_user_id).filter(Boolean))];
+    const openCountKey = (userId, hospitalId) => `${userId || ''}:${hospitalId || ''}`;
+    let openCounts = {};
+    if (targetIds.length) {
+      const { data: openRows, error: openError } = await state.supabase
+        .from('bent_announcements')
+        .select('id,created_by,hospital_id,status')
+        .in('created_by', targetIds)
+        .in('status', ['open','coordinating']);
+      if (openError) throw openError;
+      openCounts = (openRows || []).reduce((map, row) => {
+        const key = openCountKey(row.created_by, row.hospital_id);
+        map[key] = (map[key] || 0) + 1;
+        return map;
+      }, {});
+    }
+    const openItemCountFor = report => openCounts[openCountKey(report.reported_user_id, report.hospital_id)] || 0;
+
+    state.adminFilters.departures = { ...adminFilterState('departures'), status: adminFilterState('departures').status ?? 'pending_verification' };
+    const filters = adminFilterState('departures');
+    host.innerHTML = `<div class="page-stack">
+      ${adminFilterBar(`
+        <label>ค้นหา<input data-admin-filter="text" value="${U.esc(filters.text || '')}" placeholder="ชื่อผู้ถูกรายงาน ผู้แจ้ง หรือโรงพยาบาล"></label>
+        <label>จังหวัด<select data-admin-filter="province"><option value="">ทุกจังหวัด</option>${THAI_PROVINCES.map(province => `<option value="${U.esc(province)}">${U.esc(province)}</option>`).join('')}</select></label>
+        <label>สถานะ<select data-admin-filter="status"><option value="">ทั้งหมด</option>${Object.entries(MEMBER_REPORT_STATUS_LABEL).map(([value,label]) => `<option value="${value}">${U.esc(label)}</option>`).join('')}</select></label>
+        <label>รายการค้าง<select data-admin-filter="openItems"><option value="">ทั้งหมด</option><option value="yes">มีประกาศค้าง</option><option value="no">ไม่มีประกาศค้าง</option></select></label>
+      `, 'ตรวจสอบกับโรงพยาบาลก่อนปิดบัญชี และต้องจัดการประกาศที่ยังเปิดอยู่ให้เรียบร้อย')}
+      <section class="panel"><div class="panel-header"><div><h2 id="adminDepartureCount">คำแจ้งผู้พ้นสภาพ</h2><p>คำแจ้งจากเพื่อนร่วมโรงพยาบาลไม่ทำให้บัญชีถูกปิดอัตโนมัติ</p></div></div><div class="panel-body" id="adminDepartureResults"></div></section>
+    </div>`;
+
+    const renderRows = () => {
+      const f = adminFilterState('departures');
+      const text = String(f.text || '').trim().toLowerCase();
+      const rows = reports.filter(report => {
+        const count = openItemCountFor(report);
+        const searchable = [report.reported_user_full_name, report.reported_user_email, report.reporter?.full_name, report.reporter?.email, report.reported_by_name, report.reported_by_email, report.hospital?.name, report.detail].join(' ').toLowerCase();
+        return (!text || searchable.includes(text))
+          && (!f.province || report.hospital?.province === f.province)
+          && (!f.status || report.status === f.status)
+          && (!f.openItems || (f.openItems === 'yes' ? count > 0 : count === 0));
+      });
+      $('#adminDepartureCount').textContent = `คำแจ้ง ${rows.length.toLocaleString('th-TH')} จาก ${reports.length.toLocaleString('th-TH')} รายการ`;
+      $('#adminDepartureResults').innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>ผู้ถูกรายงาน</th><th>โรงพยาบาล</th><th>ผู้แจ้ง</th><th>สาเหตุ</th><th>ประกาศค้าง</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(report => `<tr><td><b>${U.esc(report.reported_user_full_name)}</b><br><small>${U.esc(report.reported_user_email)}</small></td><td>${U.esc(report.hospital?.name || '-')}<br><small>${U.esc(report.hospital?.province || '-')}</small></td><td>${U.esc(report.reporter?.full_name || report.reporter?.email || report.reported_by_name || report.reported_by_email || '-')}</td><td>${U.esc(MEMBER_REPORT_REASON_LABEL[report.reason_category] || report.reason_category)}<br><small>${U.fmtDateTime(report.requested_at)}</small></td><td>${openItemCountFor(report).toLocaleString('th-TH')} รายการ</td><td><span class="badge badge-${U.esc(report.status)}">${U.esc(MEMBER_REPORT_STATUS_LABEL[report.status] || report.status)}</span></td><td><button type="button" class="btn btn-soft" data-admin-departure="${report.id}">ตรวจสอบ</button></td></tr>`).join('')}</tbody></table></div><div class="mobile-cards">${rows.map(report => `<div class="mobile-data-card"><b>${U.esc(report.reported_user_full_name)}</b><span>${U.esc(report.hospital?.name || '-')} · ${U.esc(MEMBER_REPORT_REASON_LABEL[report.reason_category] || report.reason_category)}</span><span>ประกาศค้าง ${openItemCountFor(report)} รายการ</span><div class="inline-actions"><span class="badge badge-${U.esc(report.status)}">${U.esc(MEMBER_REPORT_STATUS_LABEL[report.status] || report.status)}</span><button type="button" class="btn btn-soft" data-admin-departure="${report.id}">ตรวจสอบ</button></div></div>`).join('')}</div>` : emptyState('ไม่พบคำแจ้งที่ตรงกับตัวกรอง','คำแจ้งใหม่จะปรากฏในหน้านี้');
+      $$('[data-admin-departure]', $('#adminDepartureResults')).forEach(button => button.addEventListener('click', () => {
+        const report = reports.find(item => item.id === button.dataset.adminDeparture);
+        if (report) openAdminMemberDepartureReport(report, openItemCountFor(report));
+      }));
+    };
+    bindAdminFilterControls('departures', renderRows);
+    renderRows();
+  }
+
+  function openAdminMemberDepartureReport(report, openItemCount) {
+    const pending = report.status === 'pending_verification';
+    const progress = `<div class="transfer-progress-grid"><div class="${report.verified_at ? 'done' : ''}"><b>1</b><span>โทรตรวจสอบโรงพยาบาล</span></div><div class="${report.no_open_items_confirmed ? 'done' : ''}"><b>2</b><span>ตรวจประกาศที่ยังค้าง</span></div><div class="${report.status === 'confirmed_inactive' ? 'done' : ''}"><b>3</b><span>ปิดบัญชีเป็น Inactive</span></div></div>`;
+    openModal('ตรวจคำแจ้งผู้พ้นสภาพ', `${report.reported_user_full_name} · ${report.hospital?.name || '-'}`, `
+      <div class="request-hospital-summary"><div><span>ผู้ถูกรายงาน</span><b>${U.esc(report.reported_user_full_name)}</b><small>${U.esc(report.reported_user_email)}</small></div><div><span>ผู้แจ้ง</span><b>${U.esc(report.reporter?.full_name || report.reporter?.email || report.reported_by_name || report.reported_by_email || '-')}</b></div><div><span>สถานะ</span><b>${U.esc(MEMBER_REPORT_STATUS_LABEL[report.status] || report.status)}</b></div></div>
+      <div class="info-box"><b>เหตุผลที่แจ้ง</b><p>${U.esc(MEMBER_REPORT_REASON_LABEL[report.reason_category] || report.reason_category)}</p><p>${U.esc(report.detail)}</p>${report.last_working_date ? `<p>วันที่ปฏิบัติงานวันสุดท้าย: ${U.fmtDate(report.last_working_date)}</p>` : ''}</div>
+      ${progress}
+      <div class="notice ${openItemCount ? 'danger' : 'success'}"><b>ประกาศของบัญชีนี้ที่ยังเปิด/กำลังประสานงาน: ${openItemCount.toLocaleString('th-TH')} รายการ</b><p>${openItemCount ? 'ต้องแก้ไขหรือปิดประกาศเหล่านี้ก่อน เพื่อไม่ให้เหลือชื่อผู้ติดต่อที่ไม่ได้ปฏิบัติงานแล้ว' : 'ไม่พบประกาศค้าง สามารถยืนยันขั้นตอนนี้ได้หลังตรวจสอบ'}</p></div>
+      <form id="adminMemberDepartureForm">
+        <fieldset class="transfer-verification-box" ${pending ? '' : 'disabled'}><legend>ผลการโทรตรวจสอบโรงพยาบาล</legend>
+          <label class="check-row"><input id="departureHospitalConfirmed" type="checkbox" ${report.verified_at ? 'checked' : ''}><span>ยืนยันว่าโทรตรวจสอบแล้ว และได้รับข้อมูลว่าบุคคลนี้ไม่ได้ปฏิบัติงานที่หน่วยเดิมแล้ว</span></label>
+          <div class="field-grid"><label>ชื่อผู้ให้ข้อมูล<input id="departureContactName" maxlength="160" value="${U.esc(report.hospital_contact_name || '')}"></label><label>เบอร์โทรที่ติดต่อ<input id="departureContactPhone" maxlength="40" value="${U.esc(report.hospital_contact_phone || '')}"></label><label>วันที่และเวลาที่โทร<input id="departureContactedAt" type="datetime-local" value="${dateTimeLocalValue(report.contacted_at)}"></label></div>
+          <label>ผลการตรวจสอบ<textarea id="departureVerificationResult" maxlength="1500">${U.esc(report.verification_result || '')}</textarea></label>
+        </fieldset>
+        <label class="check-row"><input id="departureNoOpenItems" type="checkbox" ${report.no_open_items_confirmed ? 'checked' : ''} ${openItemCount ? 'disabled' : ''}><span>ยืนยันว่าไม่มีประกาศของบัญชีนี้ที่ยังต้องรับผิดชอบ หรือจัดการรายการค้างเรียบร้อยแล้ว</span></label>
+        <label>หมายเหตุผู้ดูแล<textarea id="departureAdminNote" maxlength="1500">${U.esc(report.admin_note || '')}</textarea></label>
+        <div class="modal-actions">
+          ${pending ? `<button id="dismissMemberDepartureBtn" type="button" class="btn btn-ghost">ไม่ดำเนินการ</button><button id="saveMemberDepartureCheckBtn" type="button" class="btn btn-soft">บันทึกผลตรวจสอบ</button><button id="confirmMemberDepartureBtn" type="button" class="btn btn-danger" ${openItemCount ? 'disabled' : ''}>ยืนยันและปิดบัญชี</button>` : '<button type="button" class="btn btn-primary" data-close-modal>ปิด</button>'}
+        </div>
+      </form>`);
+    if (!pending) return;
+
+    const saveVerification = async () => {
+      const { error } = await state.supabase.rpc('bent_admin_update_member_departure_report', {
+        p_report_id: report.id,
+        p_hospital_confirmed: $('#departureHospitalConfirmed').checked,
+        p_hospital_contact_name: $('#departureContactName').value.trim() || null,
+        p_hospital_contact_phone: $('#departureContactPhone').value.trim() || null,
+        p_contacted_at: $('#departureContactedAt').value ? new Date($('#departureContactedAt').value).toISOString() : null,
+        p_verification_result: $('#departureVerificationResult').value.trim() || null,
+        p_no_open_items_confirmed: $('#departureNoOpenItems').checked,
+        p_admin_note: $('#departureAdminNote').value.trim() || null
+      });
+      if (error) throw error;
+    };
+
+    $('#saveMemberDepartureCheckBtn').addEventListener('click', async () => {
+      const button = $('#saveMemberDepartureCheckBtn');
+      try {
+        setButtonBusy(button, true, 'กำลังบันทึก...');
+        await saveVerification();
+        closeModal(); toast('บันทึกผลตรวจสอบแล้ว', '', 'success'); await loadAdminTab('departures');
+      } catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+
+    $('#confirmMemberDepartureBtn').addEventListener('click', async () => {
+      const button = $('#confirmMemberDepartureBtn');
+      try {
+        setButtonBusy(button, true, 'กำลังตรวจสอบ...');
+        await saveVerification();
+        const { data, error } = await state.supabase.rpc('bent_admin_confirm_member_departure', { p_report_id: report.id });
+        if (error) throw error;
+        closeModal(); toast('ปิดบัญชีแล้ว', `${data?.user_name || report.reported_user_full_name} ถูกเปลี่ยนเป็นสถานะปิดใช้งาน โดยยังเก็บประวัติเดิม`, 'success', 8000); await loadAdminTab('departures');
+      } catch (error) { toast('ปิดบัญชีไม่สำเร็จ', U.friendlyError(error), 'error', 9000); }
+      finally { setButtonBusy(button, false); }
+    });
+
+    $('#dismissMemberDepartureBtn').addEventListener('click', async () => {
+      const button = $('#dismissMemberDepartureBtn');
+      try {
+        const note = $('#departureAdminNote').value.trim();
+        if (note.length < 3) throw new Error('MEMBER_REPORT_DISMISS_NOTE_REQUIRED');
+        setButtonBusy(button, true, 'กำลังบันทึก...');
+        const { error } = await state.supabase.rpc('bent_admin_dismiss_member_departure_report', { p_report_id: report.id, p_admin_note: note });
+        if (error) throw error;
+        closeModal(); toast('บันทึกว่าไม่ดำเนินการแล้ว', '', 'success'); await loadAdminTab('departures');
+      } catch (error) { toast('บันทึกไม่สำเร็จ', U.friendlyError(error), 'error'); }
+      finally { setButtonBusy(button, false); }
+    });
+  }
+
+  async function adminSupportThreads(host) {
+    const { data, error } = await state.supabase
+      .from('bent_support_threads')
+      .select('*')
+      .order('last_message_at', { ascending: false });
+    if (error) throw error;
+    const threads = data || [];
+    state.adminFilters.support = { ...adminFilterState('support'), status: adminFilterState('support').status ?? 'waiting_admin' };
+    const filters = adminFilterState('support');
+    host.innerHTML = `<div class="page-stack">
+      ${adminFilterBar(`
+        <label>ค้นหา<input data-admin-filter="text" value="${U.esc(filters.text || '')}" placeholder="หัวข้อ ชื่อ อีเมล หรือโรงพยาบาล"></label>
+        <label>ประเภท<select data-admin-filter="category"><option value="">ทั้งหมด</option>${Object.entries(SUPPORT_CATEGORY_LABEL).map(([value,label]) => `<option value="${value}">${U.esc(label)}</option>`).join('')}</select></label>
+        <label>สถานะ<select data-admin-filter="status"><option value="">ทั้งหมด</option>${Object.entries(SUPPORT_STATUS_LABEL).map(([value,label]) => `<option value="${value}">${U.esc(label)}</option>`).join('')}</select></label>
+        <label>จังหวัด<select data-admin-filter="province"><option value="">ทุกจังหวัด</option>${THAI_PROVINCES.map(province => `<option value="${U.esc(province)}">${U.esc(province)}</option>`).join('')}</select></label>
+      `, 'หัวข้อที่รอผู้ดูแลตอบจะแสดงก่อน และประวัติแชทจะเก็บแยกตามเรื่อง')}
+      <section class="panel"><div class="panel-header"><div><h2 id="adminSupportCount">ข้อความและข้อเสนอแนะ</h2><p>ตอบกลับได้ในรูปแบบบทสนทนา และปิดเรื่องเมื่อดำเนินการเสร็จ</p></div></div><div class="panel-body" id="adminSupportResults"></div></section>
+    </div>`;
+
+    const renderRows = () => {
+      const f = adminFilterState('support');
+      const text = String(f.text || '').trim().toLowerCase();
+      const rows = threads.filter(thread => {
+        const province = state.masters.hospitals.find(h => h.id === thread.hospital_id)?.province || '';
+        const searchable = [thread.subject, thread.created_by_name, thread.created_by_email, thread.hospital_name].join(' ').toLowerCase();
+        return (!text || searchable.includes(text))
+          && (!f.category || thread.category === f.category)
+          && (!f.status || thread.status === f.status)
+          && (!f.province || province === f.province);
+      });
+      $('#adminSupportCount').textContent = `หัวข้อ ${rows.length.toLocaleString('th-TH')} จาก ${threads.length.toLocaleString('th-TH')} เรื่อง`;
+      $('#adminSupportResults').innerHTML = rows.length ? `<div class="support-thread-list">${rows.map(thread => `<button type="button" class="support-thread-row ${thread.status === 'waiting_admin' ? 'unread' : ''}" data-admin-support-thread="${thread.id}"><div><b>${U.esc(thread.subject)}</b><span>${U.esc(thread.created_by_name)} · ${U.esc(thread.hospital_name || '-')} · ${U.fmtDateTime(thread.last_message_at)}</span></div><div class="support-thread-meta"><span>${U.esc(SUPPORT_CATEGORY_LABEL[thread.category] || thread.category)}</span><span class="badge badge-${U.esc(thread.status)}">${U.esc(SUPPORT_STATUS_LABEL[thread.status] || thread.status)}</span></div></button>`).join('')}</div>` : emptyState('ไม่พบข้อความที่ตรงกับตัวกรอง','ลองล้างหรือลดเงื่อนไข');
+      $$('[data-admin-support-thread]', $('#adminSupportResults')).forEach(button => button.addEventListener('click', () => openSupportThread(button.dataset.adminSupportThread, true, () => loadAdminTab('support'))));
+    };
+    bindAdminFilterControls('support', renderRows);
+    renderRows();
+  }
+
   async function adminUsers(host) {
     const { data, error } = await state.supabase.from('bent_profiles').select('*, hospital:bent_hospitals(id,name,province)').order('created_at', { ascending: false });
     if (error) throw error;
@@ -1676,7 +2489,7 @@
         <label>สถานะ<select data-admin-filter="status"><option value="">ทั้งหมด</option>${['pending','active','rejected','suspended','inactive'].map(x => `<option value="${x}">${U.esc(U.statusLabel[x])}</option>`).join('')}</select></label>
         <label>สิทธิ์<select data-admin-filter="role"><option value="">ทั้งหมด</option><option value="user">ผู้ใช้งาน</option><option value="system_admin">ผู้ดูแลระบบ</option></select></label>
       `)}
-      <section class="panel"><div class="panel-header"><div><h2 id="adminUserCount">ผู้ใช้งาน</h2><p>กำหนดจังหวัด โรงพยาบาล สถานะ และสิทธิ์ของแต่ละบัญชี</p></div></div><div class="panel-body" id="adminUserResults"></div></section>
+      <section class="panel"><div class="panel-header"><div><h2 id="adminUserCount">ผู้ใช้งาน</h2><p>จัดการข้อมูลบัญชี สถานะ และสิทธิ์ ส่วนการย้ายโรงพยาบาลให้ใช้แท็บคำขอย้าย รพ.</p></div></div><div class="panel-body" id="adminUserResults"></div></section>
     </div>`;
     host.dataset.users = JSON.stringify(data);
     const renderRows = () => {
@@ -1708,7 +2521,7 @@
         <p class="field-help">เลือกจังหวัดก่อน ระบบจะแสดงเฉพาะโรงพยาบาลในจังหวัดนั้น เช่น “สมุทรปราการ”</p>
         <label>สถานะ<select id="adminUserStatus">${['pending','active','rejected','suspended','inactive'].map(x => `<option value="${x}" ${x === user.status ? 'selected' : ''}>${U.esc(U.statusLabel[x])}</option>`).join('')}</select></label>
         <label>สิทธิ์การใช้งาน<select id="adminUserRole"><option value="user" ${user.role === 'user' ? 'selected' : ''}>ผู้ใช้งาน</option><option value="system_admin" ${user.role === 'system_admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option></select></label>
-        <div class="notice warning"><b>ข้อควรระวัง</b><p>บัญชีที่เปิดใช้งานต้องกำหนดโรงพยาบาล หากบัญชีเคยสร้างประกาศหรือจัดการรูปแล้ว ระบบจะให้ปิดใช้งานแทนการลบ เพื่อรักษาประวัติการทำงาน</p></div>
+        <div class="notice warning"><b>ข้อควรระวัง</b><p>บัญชีที่เปิดใช้งานต้องกำหนดโรงพยาบาล หากเป็นการย้ายสถานที่ปฏิบัติงาน ให้ใช้แท็บ “คำขอย้าย รพ.” เพื่อให้มีการโทรตรวจสอบและ Audit Log ครบถ้วน การเปลี่ยนโรงพยาบาลตรงหน้านี้ควรใช้เฉพาะแก้ข้อมูลที่ผูกผิดเท่านั้น</p><p>หากบัญชีเคยสร้างประกาศหรือจัดการรูปแล้ว ระบบจะให้ปิดใช้งานแทนการลบ เพื่อรักษาประวัติการทำงาน</p></div>
         <div class="modal-actions"><button id="adminDeleteUserBtn" type="button" class="btn btn-danger" ${user.id === state.profile?.id ? 'disabled' : ''}>ลบบัญชี</button><button id="adminSendPasswordLinkBtn" type="button" class="btn btn-soft">ส่งลิงก์ตั้งรหัสผ่านใหม่</button><button type="button" class="btn btn-ghost" data-close-modal>ยกเลิก</button><button id="adminSaveUserBtn" class="btn btn-primary" type="submit">บันทึก</button></div>
       </form>`);
 
@@ -2189,6 +3002,9 @@
     else if (action === 'admin-edit-user') {
       const users = JSON.parse($('#adminContent').dataset.users || '[]'); openAdminUser(users.find(x => x.id === event.target.closest('[data-user]').dataset.user));
     }
+    else if (action === 'admin-review-transfer') {
+      const transfers = JSON.parse($('#adminContent').dataset.transfers || '[]'); openAdminHospitalTransfer(transfers.find(x => x.id === event.target.closest('[data-transfer]').dataset.transfer));
+    }
     else if (action === 'edit-hospital') openHospitalEdit(state.masters.hospitals.find(x => x.id === id));
     else if (action === 'edit-master') {
       const tab = event.target.closest('[data-tab]').dataset.tab;
@@ -2224,7 +3040,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.4.1').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.6.0').catch(() => {}));
     }
   }
 
