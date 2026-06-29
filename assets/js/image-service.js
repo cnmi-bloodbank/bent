@@ -234,13 +234,28 @@
     }, onProgress);
   }
 
-  async function read({ accessToken, announcementId }) {
-    return callAppsScript({ action: 'read', access_token: accessToken, announcement_id: announcementId });
+  async function read({ accessToken, announcementId, variant = 'full' }) {
+    return callAppsScript({
+      action: 'read',
+      access_token: accessToken,
+      announcement_id: announcementId,
+      variant: variant === 'thumbnail' ? 'thumbnail' : 'full'
+    });
+  }
+
+  async function readThumbnails({ accessToken, announcementIds }) {
+    const ids = Array.from(new Set((announcementIds || []).filter(Boolean))).slice(0, 8);
+    if (!ids.length) return { ok: true, thumbnails: [] };
+    return callAppsScript({
+      action: 'read_thumbnails',
+      access_token: accessToken,
+      announcement_ids: ids
+    });
   }
 
   async function remove({ accessToken, announcementId }) {
     return callAppsScript({ action: 'delete', access_token: accessToken, announcement_id: announcementId });
   }
 
-  window.BENT_IMAGE = { compressImage, upload, read, remove, call: callAppsScript, allowedTypes: ALLOWED };
+  window.BENT_IMAGE = { compressImage, upload, read, readThumbnails, remove, call: callAppsScript, allowedTypes: ALLOWED };
 })();

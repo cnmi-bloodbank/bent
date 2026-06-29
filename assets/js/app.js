@@ -24,6 +24,7 @@
     thumbnailObserver: null,
     thumbnailQueue: [],
     thumbnailActive: 0,
+    thumbnailDrainTimer: null,
     adminTab: 'requests',
     filters: {},
     searchPerformed: false,
@@ -87,52 +88,107 @@
     </div>`;
   }
 
-  function getImageData(item) {
+  function imageCacheKey(announcementId, variant = 'full') {
+    return `${announcementId}:${variant === 'thumbnail' ? 'thumbnail' : 'full'}`;
+  }
+
+  function rememberImageData(announcementId, variant, data) {
+    const key = imageCacheKey(announcementId, variant);
+    state.imageCache.set(key, data);
+    while (state.imageCache.size > 80) state.imageCache.delete(state.imageCache.keys().next().value);
+    return data;
+  }
+
+  function getImageData(item, variant = 'full') {
     if (!item?.id) return Promise.reject(new Error('ไม่พบประกาศ'));
-    if (state.imageCache.has(item.id)) return Promise.resolve(state.imageCache.get(item.id));
-    if (state.imageRequests.has(item.id)) return state.imageRequests.get(item.id);
-    const request = I.read({ accessToken: state.session?.access_token, announcementId: item.id })
-      .then(data => {
-        state.imageCache.set(item.id, data);
-        if (state.imageCache.size > 40) state.imageCache.delete(state.imageCache.keys().next().value);
-        return data;
-      })
-      .finally(() => state.imageRequests.delete(item.id));
-    state.imageRequests.set(item.id, request);
+    const safeVariant = variant === 'thumbnail' ? 'thumbnail' : 'full';
+    const key = imageCacheKey(item.id, safeVariant);
+    if (state.imageCache.has(key)) return Promise.resolve(state.imageCache.get(key));
+    if (state.imageRequests.has(key)) return state.imageRequests.get(key);
+    const request = I.read({
+      accessToken: state.session?.access_token,
+      announcementId: item.id,
+      variant: safeVariant
+    })
+      .then(data => rememberImageData(item.id, safeVariant, data))
+      .finally(() => state.imageRequests.delete(key));
+    state.imageRequests.set(key, request);
     return request;
   }
 
-  async function loadThumbnail(img) {
-    if (!img || img.dataset.loaded === 'true' || img.dataset.loading === 'true') return;
-    const item = findAnnouncement(img.dataset.imageThumb);
-    if (!item) return;
-    img.dataset.loading = 'true';
+  function showThumbnail(img, data, item) {
+    if (!img?.isConnected || !data?.data_url) return;
     const wrapper = img.closest('.image-thumbnail-button');
     const placeholder = $('.thumbnail-placeholder', wrapper);
+    img.onload = () => {
+      img.classList.remove('hidden');
+      placeholder?.classList.add('hidden');
+    };
+    img.src = data.data_url;
+    img.dataset.loaded = 'true';
+    const image = normalizeImages(item.images).find(x => x.image_status === 'active');
+    updateImageMeta(item.id, data, image);
+  }
+
+  function showThumbnailError(img) {
+    if (!img?.isConnected) return;
+    const wrapper = img.closest('.image-thumbnail-button');
+    const placeholder = $('.thumbnail-placeholder', wrapper);
+    if (placeholder) placeholder.textContent = 'แตะเพื่อเปิดรูป';
+  }
+
+  async function loadThumbnailBatch(nodes) {
+    const pendingById = new Map();
+
+    nodes.forEach(img => {
+      if (!img || !img.isConnected || img.dataset.loaded === 'true' || img.dataset.loading === 'true') return;
+      const item = findAnnouncement(img.dataset.imageThumb);
+      if (!item) return;
+      img.dataset.loading = 'true';
+      const key = imageCacheKey(item.id, 'thumbnail');
+      const cached = state.imageCache.get(key);
+      if (cached) {
+        showThumbnail(img, cached, item);
+        delete img.dataset.loading;
+        return;
+      }
+      if (!pendingById.has(item.id)) pendingById.set(item.id, { item, nodes: [] });
+      pendingById.get(item.id).nodes.push(img);
+    });
+
+    if (!pendingById.size) return;
+
     try {
-      const data = await getImageData(item);
-      img.onload = () => {
-        img.classList.remove('hidden');
-        placeholder?.classList.add('hidden');
-      };
-      img.src = data.data_url;
-      img.dataset.loaded = 'true';
-      const image = normalizeImages(item.images).find(x => x.image_status === 'active');
-      updateImageMeta(item.id, data, image);
+      const response = await I.readThumbnails({
+        accessToken: state.session?.access_token,
+        announcementIds: Array.from(pendingById.keys())
+      });
+      const rows = Array.isArray(response?.thumbnails) ? response.thumbnails : [];
+      const byId = new Map(rows.map(row => [row.announcement_id, row]));
+
+      pendingById.forEach(({ item, nodes: imageNodes }, announcementId) => {
+        const row = byId.get(announcementId);
+        if (!row || row.ok === false || !row.data_url) {
+          imageNodes.forEach(showThumbnailError);
+          return;
+        }
+        rememberImageData(announcementId, 'thumbnail', row);
+        imageNodes.forEach(img => showThumbnail(img, row, item));
+      });
     } catch (_) {
-      if (placeholder) placeholder.textContent = 'แตะเพื่อเปิดรูป';
+      pendingById.forEach(({ nodes: imageNodes }) => imageNodes.forEach(showThumbnailError));
     } finally {
-      delete img.dataset.loading;
+      pendingById.forEach(({ nodes: imageNodes }) => imageNodes.forEach(img => { delete img.dataset.loading; }));
     }
   }
 
   function drainThumbnailQueue() {
-    while (state.thumbnailActive < 3 && state.thumbnailQueue.length) {
-      const img = state.thumbnailQueue.shift();
-      if (!img?.isConnected || img.dataset.loaded === 'true') continue;
+    while (state.thumbnailActive < 2 && state.thumbnailQueue.length) {
+      const batch = state.thumbnailQueue.splice(0, 6).filter(img => img?.isConnected && img.dataset.loaded !== 'true');
+      batch.forEach(img => { delete img.dataset.queued; });
+      if (!batch.length) continue;
       state.thumbnailActive += 1;
-      delete img.dataset.queued;
-      loadThumbnail(img).finally(() => {
+      loadThumbnailBatch(batch).finally(() => {
         state.thumbnailActive -= 1;
         drainThumbnailQueue();
       });
@@ -143,12 +199,19 @@
     if (!img || img.dataset.loaded === 'true' || img.dataset.queued === 'true') return;
     img.dataset.queued = 'true';
     state.thumbnailQueue.push(img);
-    drainThumbnailQueue();
+    if (state.thumbnailDrainTimer) return;
+    state.thumbnailDrainTimer = window.setTimeout(() => {
+      state.thumbnailDrainTimer = null;
+      drainThumbnailQueue();
+    }, 20);
   }
 
   function resetThumbnailObserver() {
     state.thumbnailObserver?.disconnect();
     state.thumbnailObserver = null;
+    if (state.thumbnailDrainTimer) window.clearTimeout(state.thumbnailDrainTimer);
+    state.thumbnailDrainTimer = null;
+    state.thumbnailQueue.forEach(img => { if (img) delete img.dataset.queued; });
     state.thumbnailQueue = [];
   }
 
@@ -1452,7 +1515,7 @@
   async function openImage(item) {
     try {
       openModal('กำลังเปิดรูปภาพ', 'รูปนี้ไม่ได้เปิดเป็นลิงก์สาธารณะ', '<div class="loading-block"><div class="spinner"></div></div>');
-      const data = await getImageData(item);
+      const data = await getImageData(item, 'full');
       const image = normalizeImages(item.images).find(x => x.image_status === 'active');
       $('#modalTitle').textContent = 'รูปภาพประกอบ';
       $('#modalSubtitle').textContent = 'ใช้สองนิ้วถ่างเพื่อซูม ลากเพื่อเลื่อน หรือดับเบิลแตะเพื่อขยาย';
@@ -3387,7 +3450,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.2').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.3').catch(() => {}));
     }
   }
 
