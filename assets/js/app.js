@@ -17,6 +17,11 @@
     editingAnnouncement: null,
     compressedImage: null,
     installPrompt: null,
+    imageCache: new Map(),
+    imageRequests: new Map(),
+    thumbnailObserver: null,
+    thumbnailQueue: [],
+    thumbnailActive: 0,
     adminTab: 'requests',
     filters: {},
     searchPerformed: false,
@@ -41,6 +46,144 @@
     if (!announcement || typeof announcement !== 'object') return announcement;
     announcement.images = normalizeImages(announcement.images);
     return announcement;
+  }
+
+
+  function formatImageSize(bytes) {
+    const value = Number(bytes || 0);
+    if (!value) return '-';
+    if (value < 1024) return `${value.toLocaleString('th-TH')} B`;
+    if (value < 1024 * 1024) return `${Math.round(value / 1024).toLocaleString('th-TH')} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function imageDateText(data, fallbackUploadedAt) {
+    const value = data?.photo_taken_at || data?.uploaded_at || fallbackUploadedAt;
+    if (!value) return 'ไม่พบข้อมูล';
+    const suffix = data?.photo_date_source === 'exif'
+      ? ''
+      : (data?.photo_date_source === 'uploaded_at' ? ' (รูปเดิม: ใช้วันอัปโหลด)' : ' (อ้างอิงข้อมูลไฟล์)');
+    return `${U.fmtDateTime(value)}${suffix}`;
+  }
+
+  function updateImageMeta(announcementId, data, image) {
+    $$(`[data-image-meta="${announcementId}"]`).forEach(meta => {
+      const date = $('[data-meta-date]', meta);
+      const size = $('[data-meta-size]', meta);
+      const uploader = $('[data-meta-uploader]', meta);
+      if (date) date.textContent = `วันที่ถ่าย: ${imageDateText(data, image?.uploaded_at)}`;
+      if (size) size.textContent = `ขนาดไฟล์: ${formatImageSize(data?.image_size || image?.image_size)}`;
+      if (uploader) uploader.textContent = `ผู้ที่อัปโหลด: ${data?.uploaded_by_name || 'ไม่พบข้อมูล'}`;
+    });
+  }
+
+  function imageMetaHtml(announcementId, image) {
+    return `<div class="image-meta" data-image-meta="${U.esc(announcementId)}">
+      <span data-meta-date>วันที่ถ่าย: กำลังตรวจสอบ...</span>
+      <span data-meta-size>ขนาดไฟล์: ${U.esc(formatImageSize(image?.image_size))}</span>
+      <span data-meta-uploader>ผู้ที่อัปโหลด: กำลังโหลด...</span>
+    </div>`;
+  }
+
+  function getImageData(item) {
+    if (!item?.id) return Promise.reject(new Error('ไม่พบประกาศ'));
+    if (state.imageCache.has(item.id)) return Promise.resolve(state.imageCache.get(item.id));
+    if (state.imageRequests.has(item.id)) return state.imageRequests.get(item.id);
+    const request = I.read({ accessToken: state.session?.access_token, announcementId: item.id })
+      .then(data => {
+        state.imageCache.set(item.id, data);
+        if (state.imageCache.size > 40) state.imageCache.delete(state.imageCache.keys().next().value);
+        return data;
+      })
+      .finally(() => state.imageRequests.delete(item.id));
+    state.imageRequests.set(item.id, request);
+    return request;
+  }
+
+  async function loadThumbnail(img) {
+    if (!img || img.dataset.loaded === 'true' || img.dataset.loading === 'true') return;
+    const item = findAnnouncement(img.dataset.imageThumb);
+    if (!item) return;
+    img.dataset.loading = 'true';
+    const wrapper = img.closest('.image-thumbnail-button');
+    const placeholder = $('.thumbnail-placeholder', wrapper);
+    try {
+      const data = await getImageData(item);
+      img.onload = () => {
+        img.classList.remove('hidden');
+        placeholder?.classList.add('hidden');
+      };
+      img.src = data.data_url;
+      img.dataset.loaded = 'true';
+      const image = normalizeImages(item.images).find(x => x.image_status === 'active');
+      updateImageMeta(item.id, data, image);
+    } catch (_) {
+      if (placeholder) placeholder.textContent = 'แตะเพื่อเปิดรูป';
+    } finally {
+      delete img.dataset.loading;
+    }
+  }
+
+  function drainThumbnailQueue() {
+    while (state.thumbnailActive < 3 && state.thumbnailQueue.length) {
+      const img = state.thumbnailQueue.shift();
+      if (!img?.isConnected || img.dataset.loaded === 'true') continue;
+      state.thumbnailActive += 1;
+      delete img.dataset.queued;
+      loadThumbnail(img).finally(() => {
+        state.thumbnailActive -= 1;
+        drainThumbnailQueue();
+      });
+    }
+  }
+
+  function enqueueThumbnail(img) {
+    if (!img || img.dataset.loaded === 'true' || img.dataset.queued === 'true') return;
+    img.dataset.queued = 'true';
+    state.thumbnailQueue.push(img);
+    drainThumbnailQueue();
+  }
+
+  function resetThumbnailObserver() {
+    state.thumbnailObserver?.disconnect();
+    state.thumbnailObserver = null;
+    state.thumbnailQueue = [];
+  }
+
+  function hydrateImageThumbnails(root = main) {
+    const nodes = $$('img[data-image-thumb]:not([data-loaded="true"])', root);
+    if (!nodes.length) return;
+    if ('IntersectionObserver' in window) {
+      if (!state.thumbnailObserver) {
+        state.thumbnailObserver = new IntersectionObserver(entries => {
+          entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            state.thumbnailObserver.unobserve(entry.target);
+            enqueueThumbnail(entry.target);
+          });
+        }, { rootMargin: '160px 0px' });
+      }
+      nodes.forEach(node => state.thumbnailObserver.observe(node));
+    } else {
+      nodes.forEach(enqueueThumbnail);
+    }
+  }
+
+  function setImageUploadProgress(percent, text) {
+    const box = $('#imageUploadProgress');
+    if (!box) return;
+    const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    box.classList.remove('hidden');
+    const label = $('#imageUploadProgressText');
+    const value = $('#imageUploadProgressPercent');
+    const bar = $('#imageUploadProgressBar');
+    if (label) label.textContent = text || (safePercent < 100 ? 'กำลังอัปโหลดรูป...' : 'กำลังบันทึกรูป...');
+    if (value) value.textContent = `${safePercent}%`;
+    if (bar) bar.style.width = `${safePercent}%`;
+  }
+
+  function hideImageUploadProgress() {
+    $('#imageUploadProgress')?.classList.add('hidden');
   }
 
   const screens = {
@@ -636,10 +779,12 @@
       component:bent_components(id,code,display_name,is_active),
       source:bent_blood_sources(id,code,display_name,requires_detail,is_active),
       hospital:bent_hospitals(id,name,province,is_active),
-      images:bent_announcement_images(id,image_file_name,image_status,uploaded_at)
+      images:bent_announcement_images(id,image_file_name,image_size,image_mime_type,image_status,uploaded_by,uploaded_at)
     `).order('created_at', { ascending: false }).limit(500);
     if (error) throw error;
     state.announcements = (data || []).map(withNormalizedImages);
+    state.imageCache.clear();
+    state.imageRequests.clear();
   }
 
   function isAdmin() { return state.profile?.role === 'system_admin'; }
@@ -721,6 +866,7 @@
 
   async function navigate(view, options = {}) {
     state.currentView = view;
+    resetThumbnailObserver();
     if (view !== 'create') state.editingAnnouncement = null;
     renderNavigation();
     closeSidebar();
@@ -736,6 +882,7 @@
     else if (view === 'guide') renderGuide();
     else if (view === 'admin' && isAdmin()) await renderAdmin();
     else { state.currentView = 'dashboard'; renderDashboard(); }
+    hydrateImageThumbnails(main);
     main.focus({ preventScroll: true });
   }
 
@@ -900,7 +1047,9 @@
     if (antigenCount) antigenCount.textContent = f.antigens.length ? `เลือก ${f.antigens.length} รายการ` : 'ยังไม่ได้เลือก';
     const locationText = [f.region, f.province].filter(Boolean).join(' · ');
     $('#resultCount').textContent = `พบ ${rows.length.toLocaleString('th-TH')} รายการ${locationText ? ` ใน ${locationText}` : ''}`;
+    resetThumbnailObserver();
     $('#announcementResults').innerHTML = rows.map(renderAnnouncementCard).join('') || emptyState('ไม่พบรายการที่ตรงกับตัวกรอง','ลองลดเงื่อนไขบางช่อง หรือสร้างประกาศใหม่');
+    hydrateImageThumbnails($('#announcementResults'));
   }
 
   function renderMine() {
@@ -936,7 +1085,13 @@
         </div>
         ${antigen.length ? `<div><span class="card-kicker">แอนติเจนที่ต้องการผลลบ</span><div class="antigen-line">${antigen.map(x => `<span class="antigen-chip">${U.esc(x)}-</span>`).join('')}</div></div>` : ''}
         ${a.blood_source_detail ? `<div class="info-box"><b>รายละเอียดแหล่งที่มา</b><p>${U.esc(a.blood_source_detail)}</p></div>` : ''}
-        ${image ? `<button class="image-button" data-action="view-image" data-id="${a.id}">ดูรูปภาพประกอบ (ไม่ใช้แทนการตรวจสอบตาม SOP)</button>` : ''}
+        ${image ? `<div class="card-image-block">
+          <button class="image-thumbnail-button" type="button" data-action="view-image" data-id="${a.id}" aria-label="เปิดรูปภาพประกอบเต็มจอ">
+            <span class="thumbnail-placeholder">กำลังโหลดรูป...</span>
+            <img class="announcement-thumbnail hidden" data-image-thumb="${a.id}" alt="รูปภาพประกอบประกาศ ${U.esc(componentName)}">
+          </button>
+          <div><b class="image-caption">รูปภาพประกอบ</b>${imageMetaHtml(a.id, image)}<small class="image-sop-note">แตะรูปเพื่อขยาย · ไม่ใช้แทนการตรวจสอบตาม SOP</small></div>
+        </div>` : ''}
         <div class="hospital-line"><b>${U.esc(a.hospital?.name || '-')}</b><span>${U.esc(a.hospital?.province || '')} · ผู้ติดต่อ ${U.esc(a.contact_name)}</span></div>
         <div class="card-actions">
           <button class="btn btn-primary" data-action="detail" data-id="${a.id}">ดูรายละเอียดและติดต่อ</button>
@@ -1006,7 +1161,8 @@
           <section class="form-section">
             <h2>5. รูปภาพประกอบ (ไม่บังคับ)</h2><p>สูงสุด 1 รูป ระบบจะลดขนาดและลบข้อมูลแฝงทั่วไปก่อนส่ง</p>
             ${existingImage ? `<div class="notice success"><b>ประกาศนี้มีข้อมูลรูปอยู่แล้ว</b><p>สถานะ: ${U.esc(existingImage.image_status)} · หากต้องการเปลี่ยนรูป ให้ลบรูปเดิมก่อน แล้วกลับมาแก้ไขประกาศอีกครั้ง</p></div>` : `
-              <div class="image-drop"><input id="annImage" type="file" accept="image/jpeg,image/png,image/webp"><p>รองรับ JPG, PNG, WebP ระบบตั้งเป้าหมายประมาณ 300–500 KB</p><img id="imagePreview" class="image-preview hidden" alt="ตัวอย่างรูป"><div id="imageInfo"></div><button id="removeSelectedImage" type="button" class="btn btn-ghost hidden">เอารูปออก</button></div>
+              <div class="image-drop"><input id="annImage" type="file" accept="image/jpeg,image/png,image/webp"><p>รองรับ JPG, PNG, WebP · ลดด้านยาวไม่เกิน 1600 px · บันทึกเป็น JPEG คุณภาพ 84% · เป้าหมายประมาณ 200–500 KB</p><img id="imagePreview" class="image-preview hidden" alt="ตัวอย่างรูป"><div id="imageInfo"></div><button id="removeSelectedImage" type="button" class="btn btn-ghost hidden">เอารูปออก</button></div>
+              <div id="imageUploadProgress" class="upload-progress hidden" role="status" aria-live="polite"><div class="upload-progress-head"><b id="imageUploadProgressText">กำลังอัปโหลดรูป...</b><span id="imageUploadProgressPercent">0%</span></div><div class="upload-progress-track"><div id="imageUploadProgressBar" class="upload-progress-bar"></div></div></div>
               <div class="privacy-warning"><b>ห้ามมีข้อมูลต่อไปนี้ในรูป</b><br>ชื่อผู้ป่วย, HN, เลขบัตรประชาชน, Diagnosis, Donor ID, เลขถุงเลือด, Barcode, QR Code หรือข้อมูลที่ระบุตัวบุคคล/ผลิตภัณฑ์เฉพาะถุงได้</div>
               <label class="check-row"><input id="imagePrivacyConfirm" type="checkbox"><span>หากแนบรูป ฉันตรวจสอบแล้วว่าไม่มีข้อมูลต้องห้ามและได้ครอบตัดหรือปิดบังข้อมูลเรียบร้อย</span></label>`}
           </section>
@@ -1077,7 +1233,8 @@
       $('#imagePreview').src = state.compressedImage.previewUrl;
       $('#imagePreview').classList.remove('hidden');
       $('#removeSelectedImage').classList.remove('hidden');
-      info.textContent = `พร้อมอัปโหลด ${(state.compressedImage.size / 1024).toFixed(0)} KB · ${state.compressedImage.width}×${state.compressedImage.height} px`;
+      const reduced = state.compressedImage.originalSize ? ` · ลดจาก ${(state.compressedImage.originalSize / (1024 * 1024)).toFixed(1)} MB` : '';
+      info.textContent = `พร้อมอัปโหลด ${(state.compressedImage.size / 1024).toFixed(0)} KB · ${state.compressedImage.width}×${state.compressedImage.height} px${reduced}`;
     } catch (error) {
       clearSelectedImage();
       toast('ใช้รูปนี้ไม่ได้', U.friendlyError(error), 'error');
@@ -1091,6 +1248,7 @@
     if ($('#imagePreview')) { $('#imagePreview').src = ''; $('#imagePreview').classList.add('hidden'); }
     $('#removeSelectedImage')?.classList.add('hidden');
     if ($('#imageInfo')) $('#imageInfo').textContent = '';
+    hideImageUploadProgress();
   }
 
   function validateForm(item) {
@@ -1170,8 +1328,18 @@
       if (state.compressedImage) {
         try {
           const token = state.session?.access_token;
-          await I.upload({ accessToken: token, announcementId, compressed: state.compressedImage });
-        } catch (error) { imageError = error; }
+          setImageUploadProgress(1, 'กำลังอัปโหลดรูป...');
+          await I.upload({
+            accessToken: token,
+            announcementId,
+            compressed: state.compressedImage,
+            onProgress: percent => setImageUploadProgress(percent, percent < 100 ? 'กำลังอัปโหลดรูป...' : 'กำลังบันทึกรูป...')
+          });
+          setImageUploadProgress(100, 'อัปโหลดรูปสำเร็จ');
+        } catch (error) {
+          imageError = error;
+          setImageUploadProgress(100, 'อัปโหลดรูปไม่สำเร็จ');
+        }
       }
 
       clearSelectedImage();
@@ -1184,6 +1352,7 @@
   }
 
   function openModal(title, subtitle, html) {
+    $('#modalRoot .modal-card')?.classList.remove('image-modal-card');
     $('#modalTitle').textContent = title;
     $('#modalSubtitle').textContent = subtitle || '';
     $('#modalBody').innerHTML = html;
@@ -1196,6 +1365,7 @@
     $('#modalRoot').classList.add('hidden');
     $('#modalRoot').setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+    $('#modalRoot .modal-card')?.classList.remove('image-modal-card');
   }
 
   function findAnnouncement(id) { return state.announcements.find(a => a.id === id); }
@@ -1215,15 +1385,86 @@
       </div>`);
   }
 
+  function enableImageZoom() {
+    const viewport = $('#imageZoomViewport');
+    const image = $('#imageZoomImage');
+    if (!viewport || !image) return;
+    const pointers = new Map();
+    let scale = 1;
+    let x = 0;
+    let y = 0;
+    let dragStart = null;
+    let pinchStart = null;
+
+    const clampScale = value => Math.max(1, Math.min(5, value));
+    const apply = () => { image.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`; };
+    const reset = () => { scale = 1; x = 0; y = 0; apply(); };
+    const zoomBy = factor => {
+      const next = clampScale(scale * factor);
+      scale = next;
+      if (scale === 1) { x = 0; y = 0; }
+      apply();
+    };
+    const distance = values => Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y);
+    const center = values => ({ x: (values[0].x + values[1].x) / 2, y: (values[0].y + values[1].y) / 2 });
+
+    viewport.addEventListener('pointerdown', event => {
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      viewport.setPointerCapture?.(event.pointerId);
+      const values = Array.from(pointers.values());
+      if (values.length === 1) dragStart = { pointerX: values[0].x, pointerY: values[0].y, x, y };
+      if (values.length === 2) pinchStart = { distance: distance(values), center: center(values), scale, x, y };
+    });
+    viewport.addEventListener('pointermove', event => {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const values = Array.from(pointers.values());
+      if (values.length >= 2 && pinchStart) {
+        const currentCenter = center(values);
+        scale = clampScale(pinchStart.scale * (distance(values) / Math.max(1, pinchStart.distance)));
+        x = pinchStart.x + (currentCenter.x - pinchStart.center.x);
+        y = pinchStart.y + (currentCenter.y - pinchStart.center.y);
+        apply();
+      } else if (values.length === 1 && dragStart && scale > 1) {
+        x = dragStart.x + (values[0].x - dragStart.pointerX);
+        y = dragStart.y + (values[0].y - dragStart.pointerY);
+        apply();
+      }
+    });
+    const release = event => {
+      pointers.delete(event.pointerId);
+      const values = Array.from(pointers.values());
+      pinchStart = null;
+      dragStart = values.length === 1 ? { pointerX: values[0].x, pointerY: values[0].y, x, y } : null;
+      if (scale <= 1) reset();
+    };
+    viewport.addEventListener('pointerup', release);
+    viewport.addEventListener('pointercancel', release);
+    viewport.addEventListener('wheel', event => { event.preventDefault(); zoomBy(event.deltaY < 0 ? 1.18 : 0.85); }, { passive: false });
+    viewport.addEventListener('dblclick', () => { if (scale > 1) reset(); else zoomBy(2); });
+    $('#imageZoomIn')?.addEventListener('click', () => zoomBy(1.25));
+    $('#imageZoomOut')?.addEventListener('click', () => zoomBy(0.8));
+    $('#imageZoomReset')?.addEventListener('click', reset);
+  }
+
   async function openImage(item) {
     try {
       openModal('กำลังเปิดรูปภาพ', 'รูปนี้ไม่ได้เปิดเป็นลิงก์สาธารณะ', '<div class="loading-block"><div class="spinner"></div></div>');
-      const data = await I.read({ accessToken: state.session.access_token, announcementId: item.id });
+      const data = await getImageData(item);
+      const image = normalizeImages(item.images).find(x => x.image_status === 'active');
       $('#modalTitle').textContent = 'รูปภาพประกอบ';
-      $('#modalSubtitle').textContent = 'ใช้ประกอบการติดต่อเท่านั้น ไม่ใช้แทนการตรวจสอบตาม SOP';
-      $('#modalBody').innerHTML = `<img class="modal-image" src="${data.data_url}" alt="รูปภาพประกอบประกาศ"><div class="notice warning" style="margin-top:12px"><b>ตรวจสอบซ้ำก่อนรับหรือจ่ายผลิตภัณฑ์</b><p>ห้ามใช้รูปนี้แทนฉลากจริง เอกสาร หรือขั้นตอนตรวจสอบของโรงพยาบาล</p></div>`;
+      $('#modalSubtitle').textContent = 'ใช้สองนิ้วถ่างเพื่อซูม ลากเพื่อเลื่อน หรือดับเบิลแตะเพื่อขยาย';
+      $('#modalRoot .modal-card')?.classList.add('image-modal-card');
+      $('#modalBody').innerHTML = `<div class="image-viewer-tools"><button id="imageZoomOut" class="btn btn-ghost" type="button">− ย่อ</button><button id="imageZoomReset" class="btn btn-soft" type="button">พอดีจอ</button><button id="imageZoomIn" class="btn btn-ghost" type="button">+ ขยาย</button></div>
+        <div id="imageZoomViewport" class="image-zoom-viewport"><img id="imageZoomImage" class="image-zoom-image" src="${data.data_url}" alt="รูปภาพประกอบประกาศ" draggable="false"></div>
+        <div class="image-full-meta"><span><b>วันที่ถ่าย:</b> ${U.esc(imageDateText(data, image?.uploaded_at))}</span><span><b>ขนาดไฟล์:</b> ${U.esc(formatImageSize(data.image_size || image?.image_size))}</span><span><b>ผู้ที่อัปโหลด:</b> ${U.esc(data.uploaded_by_name || 'ไม่พบข้อมูล')}</span></div>
+        <div class="notice warning" style="margin-top:12px"><b>ตรวจสอบซ้ำก่อนรับหรือจ่ายผลิตภัณฑ์</b><p>ห้ามใช้รูปนี้แทนฉลากจริง เอกสาร หรือขั้นตอนตรวจสอบของโรงพยาบาล</p></div>`;
+      updateImageMeta(item.id, data, image);
+      enableImageZoom();
     } catch (error) {
-      $('#modalBody').innerHTML = `<div class="notice danger"><b>เปิดรูปไม่สำเร็จ</b><p>${U.esc(U.friendlyError(error))}</p></div>`;
+      $('#modalTitle').textContent = 'เปิดรูปไม่สำเร็จ';
+      $('#modalSubtitle').textContent = '';
+      $('#modalBody').innerHTML = `<div class="notice danger"><b>ไม่สามารถอ่านรูปได้</b><p>${U.esc(U.friendlyError(error))}</p></div>`;
     }
   }
 
@@ -1742,7 +1983,7 @@
     main.innerHTML = `
       <div class="page-stack">
         <section class="guide-hero"><span class="eyebrow" style="color:var(--blue-700)">เริ่มใช้งานแบบทีละขั้น</span><h2>BENT ใช้ทำอะไร และต้องกดตรงไหน</h2><p>ระบบนี้เป็นพื้นที่กลางสำหรับ “ประกาศและติดต่อ” ไม่ใช่ระบบจองหรือยืนยันส่งมอบเลือด</p></section>
-        <div id="installPromptBox" class="install-prompt"><div><b>ติดตั้ง BENT บนหน้าจอมือถือหรือแท็บเล็ต</b><p style="margin:2px 0;color:var(--muted)">เปิดได้เหมือนแอปและเข้าถึงง่ายขึ้น</p></div><button class="btn btn-primary" data-action="install-pwa">ดูวิธีติดตั้ง</button></div>
+        <div id="installPromptBox" class="install-prompt"><div><b>ติดตั้ง BENT บนหน้าจอมือถือหรือแท็บเล็ต</b><p style="margin:2px 0;color:var(--muted)">เปิดได้เหมือนแอปและเข้าถึงง่ายขึ้น</p></div><button class="btn btn-primary" data-action="install-pwa">ติดตั้งตอนนี้</button></div>
         <section class="guide-grid">
           <article class="guide-card"><h3>1. สมัครและเข้าสู่ระบบ</h3><ol><li>เปิดแท็บ “สมัครใช้งาน” และอ่านขั้นตอนที่อยู่เหนือแบบฟอร์ม</li><li>เลือกจังหวัดก่อน แล้วค้นหาโรงพยาบาลจากรายชื่อ</li><li>หากไม่พบ ให้กด “ไม่พบโรงพยาบาลของฉัน” และกรอกชื่อทางการพร้อมเบอร์โทรโรงพยาบาล</li><li>กรอกชื่อ เบอร์โทร อีเมล และส่งคำขอ</li><li>รอผู้ดูแลตรวจสอบ จากนั้นเปิดอีเมลและตั้งรหัสผ่านของตนเอง</li></ol></article>
           <article class="guide-card"><h3>2. ค้นหาประกาศ</h3><ol><li>เปิดเมนู “ค้นหาประกาศ”</li><li>กรอกตัวกรองที่ต้องการ โดยเลือกแอนติเจนผลลบได้หลายตัว</li><li>กดปุ่ม “ค้นหา” ระบบจึงจะแสดงรายการ</li><li>กด “ดูรายละเอียดและติดต่อ”</li><li>โทรหรือคัดลอกเบอร์ แล้วประสานงานตาม SOP ของโรงพยาบาล</li></ol></article>
@@ -1828,7 +2069,9 @@
           && (!f.dateTo || date <= f.dateTo);
       });
       $('#adminAnnouncementCount').textContent = `ประกาศ ${rows.length.toLocaleString('th-TH')} จาก ${allRows.length.toLocaleString('th-TH')} รายการ`;
+      resetThumbnailObserver();
       $('#adminAnnouncementRows').innerHTML = rows.map(a => renderAnnouncementCard(a, { adminMode: true })).join('') || emptyState('ไม่พบประกาศที่ตรงกับตัวกรอง','ลองล้างหรือลดเงื่อนไข');
+      hydrateImageThumbnails($('#adminAnnouncementRows'));
     };
     bindAdminFilterControls('announcements', renderRows);
     renderRows();
@@ -2838,14 +3081,35 @@
     openModal('เริ่มใช้ BENT ใน 4 ขั้นตอน', 'อ่านครั้งเดียวก็เริ่มใช้งานได้', `<div class="guide-grid"><div class="guide-card"><h3>1. ค้นหา</h3><p>ใช้ตัวกรองเพื่อหาผลิตภัณฑ์ หมู่เลือด และแอนติเจนที่ต้องการ</p></div><div class="guide-card"><h3>2. ติดต่อ</h3><p>เปิดรายละเอียด แล้วโทรหรือคัดลอกเบอร์ผู้ติดต่อ</p></div><div class="guide-card"><h3>3. สร้างประกาศ</h3><p>เลือกว่ามีเลือดหรือต้องการเลือด แล้วกรอกเฉพาะข้อมูลที่จำเป็น</p></div><div class="guide-card"><h3>4. ปิดรายการ</h3><p>บันทึกผลสั้น ๆ เพื่อใช้เป็นสถิติการใช้งาน โดยไม่ใส่ข้อมูลผู้ป่วย</p></div></div><div class="notice warning"><b>ห้ามบันทึก</b><p>ชื่อผู้ป่วย HN Diagnosis Donor ID เลขถุงเลือด Barcode หรือ QR Code</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>เข้าใจแล้ว เริ่มใช้งาน</button></div>`);
   }
 
-  function openInstallHelp() {
+  function isAppInstalled() {
+    return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+
+  function updateInstallButton() {
+    const installed = isAppInstalled();
+    const buttons = [$('#installTopBtn'), $('#installAuthBtn')].filter(Boolean);
+    buttons.forEach(button => button.classList.toggle('hidden', installed));
+    const topButton = $('#installTopBtn');
+    const authButton = $('#installAuthBtn');
+    if (topButton) topButton.textContent = state.installPrompt ? 'ติดตั้งแอป' : 'ติดตั้ง BENT';
+    if (authButton) authButton.textContent = state.installPrompt ? 'ติดตั้ง BENT ตอนนี้' : 'วิธีติดตั้ง BENT';
+  }
+
+  async function openInstallHelp() {
     const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    if (state.installPrompt) {
-      state.installPrompt.prompt();
-      state.installPrompt.userChoice.finally(() => state.installPrompt = null);
+    if (isAppInstalled()) {
+      toast('ติดตั้ง BENT แล้ว', 'เปิดใช้งานจากไอคอนบนหน้าจอได้เลย', 'success');
       return;
     }
-    openModal('ติดตั้ง BENT บนหน้าจอหลัก', '', isIos ? `<ol><li>เปิดเว็บไซต์ BENT ด้วย Safari</li><li>แตะปุ่ม Share</li><li>เลือก “เพิ่มไปยังหน้าจอโฮม”</li><li>แตะ “เพิ่ม”</li></ol>` : `<ol><li>เปิดเว็บไซต์ BENT ด้วย Chrome</li><li>แตะเมนูจุดสามจุด</li><li>เลือก “ติดตั้งแอป” หรือ “เพิ่มลงในหน้าจอหลัก”</li><li>กดยืนยัน</li></ol><p>หากยังไม่พบเมนู ให้เปิดเว็บไซต์ผ่าน HTTPS และโหลดหน้าใหม่หนึ่งครั้ง</p>`);
+    if (state.installPrompt) {
+      const prompt = state.installPrompt;
+      state.installPrompt = null;
+      prompt.prompt();
+      try { await prompt.userChoice; } catch (_) {}
+      updateInstallButton();
+      return;
+    }
+    openModal('ติดตั้ง BENT บนหน้าจอหลัก', 'อุปกรณ์นี้ยังไม่แสดงหน้าต่างติดตั้งอัตโนมัติ', isIos ? `<ol><li>เปิดเว็บไซต์ BENT ด้วย Safari</li><li>แตะปุ่มแชร์ ↑</li><li>เลือก “เพิ่มไปยังหน้าจอโฮม”</li><li>แตะ “เพิ่ม”</li></ol>` : `<ol><li>เปิดเว็บไซต์ BENT ด้วย Chrome หรือ Edge</li><li>แตะเมนูจุดสามจุด</li><li>เลือก “ติดตั้งแอป” หรือ “เพิ่มลงในหน้าจอหลัก”</li><li>กดยืนยัน</li></ol><p>หากยังไม่พบเมนู ให้เปิดผ่าน HTTPS โหลดหน้าใหม่ และใช้งานหน้าเว็บอย่างน้อยหนึ่งครั้ง</p>`);
   }
 
 
@@ -2891,11 +3155,15 @@
     $('#closeSidebarBtn').addEventListener('click', closeSidebar);
     $('#sidebarBackdrop').addEventListener('click', closeSidebar);
     $('#helpTopBtn').addEventListener('click', () => navigate('guide'));
+    $('#installTopBtn')?.addEventListener('click', openInstallHelp);
+    $('#installAuthBtn')?.addEventListener('click', openInstallHelp);
     $('#modalRoot').addEventListener('click', e => { if (e.target.closest('[data-close-modal]')) closeModal(); handleActionClick(e); });
     main.addEventListener('click', handleActionClick);
     window.addEventListener('online', updateConnectionState);
     window.addEventListener('offline', updateConnectionState);
-    window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); state.installPrompt = event; });
+    window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); state.installPrompt = event; updateInstallButton(); });
+    window.addEventListener('appinstalled', () => { state.installPrompt = null; updateInstallButton(); toast('ติดตั้ง BENT สำเร็จ', 'เปิดใช้งานจากไอคอนบนหน้าจอได้เลย', 'success'); });
+    updateInstallButton();
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
   }
 
@@ -2982,7 +3250,7 @@
 
   async function logout() {
     try { await state.supabase?.auth.signOut(); } catch (_) {}
-    state.session = null; state.profile = null; state.hospital = null; state.announcements = []; state.filters = {}; state.searchPerformed = false; state.adminFilters = {}; state.currentView = 'dashboard'; showScreen('auth');
+    state.session = null; state.profile = null; state.hospital = null; state.announcements = []; state.filters = {}; state.searchPerformed = false; state.adminFilters = {}; state.imageCache.clear(); state.imageRequests.clear(); resetThumbnailObserver(); state.currentView = 'dashboard'; showScreen('auth');
   }
 
   async function handleActionClick(event) {
@@ -3054,7 +3322,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.6.0').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.0').catch(() => {}));
     }
   }
 
