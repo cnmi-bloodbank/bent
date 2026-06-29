@@ -5,6 +5,8 @@
   const I = window.BENT_IMAGE;
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const INSTALL_GUIDE_DISMISSED_KEY = 'bent_install_guide_dismissed_v1';
+  const INSTALL_GUIDE_SESSION_KEY = 'bent_install_guide_seen_session_v1';
 
   const state = {
     supabase: null,
@@ -551,6 +553,8 @@
     if (passwordSetupCompleted && !state.session?.user) {
       showScreen('auth');
       openModal('ตั้งรหัสผ่านสำเร็จ', 'บัญชีพร้อมใช้งานแล้ว', `<p>เข้าสู่ระบบด้วยอีเมลและรหัสผ่านที่เพิ่งกำหนดได้ทันที</p><div class="modal-actions"><button class="btn btn-primary" data-close-modal>เข้าสู่ระบบ</button></div>`);
+    } else {
+      window.setTimeout(() => maybeShowIosInstallGuide(), 900);
     }
   }
 
@@ -1983,7 +1987,7 @@
     main.innerHTML = `
       <div class="page-stack">
         <section class="guide-hero"><span class="eyebrow" style="color:var(--blue-700)">เริ่มใช้งานแบบทีละขั้น</span><h2>BENT ใช้ทำอะไร และต้องกดตรงไหน</h2><p>ระบบนี้เป็นพื้นที่กลางสำหรับ “ประกาศและติดต่อ” ไม่ใช่ระบบจองหรือยืนยันส่งมอบเลือด</p></section>
-        <div id="installPromptBox" class="install-prompt"><div><b>ติดตั้ง BENT บนหน้าจอมือถือหรือแท็บเล็ต</b><p style="margin:2px 0;color:var(--muted)">เปิดได้เหมือนแอปและเข้าถึงง่ายขึ้น</p></div><button class="btn btn-primary" data-action="install-pwa">ติดตั้งตอนนี้</button></div>
+        ${isInstallGuideDismissed() ? '' : `<div id="installPromptBox" class="install-prompt"><div><b>ติดตั้ง BENT บนหน้าจอมือถือหรือแท็บเล็ต</b><p style="margin:2px 0;color:var(--muted)">เปิดได้เหมือนแอปและเข้าถึงง่ายขึ้น</p></div><div class="install-prompt-actions"><button class="btn btn-primary" data-action="install-pwa">ติดตั้งตอนนี้</button><button class="btn btn-soft" data-action="dismiss-install-banner">ไม่ต้องแสดงอีก</button></div></div>`}
         <section class="guide-grid">
           <article class="guide-card"><h3>1. สมัครและเข้าสู่ระบบ</h3><ol><li>เปิดแท็บ “สมัครใช้งาน” และอ่านขั้นตอนที่อยู่เหนือแบบฟอร์ม</li><li>เลือกจังหวัดก่อน แล้วค้นหาโรงพยาบาลจากรายชื่อ</li><li>หากไม่พบ ให้กด “ไม่พบโรงพยาบาลของฉัน” และกรอกชื่อทางการพร้อมเบอร์โทรโรงพยาบาล</li><li>กรอกชื่อ เบอร์โทร อีเมล และส่งคำขอ</li><li>รอผู้ดูแลตรวจสอบ จากนั้นเปิดอีเมลและตั้งรหัสผ่านของตนเอง</li></ol></article>
           <article class="guide-card"><h3>2. ค้นหาประกาศ</h3><ol><li>เปิดเมนู “ค้นหาประกาศ”</li><li>กรอกตัวกรองที่ต้องการ โดยเลือกแอนติเจนผลลบได้หลายตัว</li><li>กดปุ่ม “ค้นหา” ระบบจึงจะแสดงรายการ</li><li>กด “ดูรายละเอียดและติดต่อ”</li><li>โทรหรือคัดลอกเบอร์ แล้วประสานงานตาม SOP ของโรงพยาบาล</li></ol></article>
@@ -3081,8 +3085,67 @@
     openModal('เริ่มใช้ BENT ใน 4 ขั้นตอน', 'อ่านครั้งเดียวก็เริ่มใช้งานได้', `<div class="guide-grid"><div class="guide-card"><h3>1. ค้นหา</h3><p>ใช้ตัวกรองเพื่อหาผลิตภัณฑ์ หมู่เลือด และแอนติเจนที่ต้องการ</p></div><div class="guide-card"><h3>2. ติดต่อ</h3><p>เปิดรายละเอียด แล้วโทรหรือคัดลอกเบอร์ผู้ติดต่อ</p></div><div class="guide-card"><h3>3. สร้างประกาศ</h3><p>เลือกว่ามีเลือดหรือต้องการเลือด แล้วกรอกเฉพาะข้อมูลที่จำเป็น</p></div><div class="guide-card"><h3>4. ปิดรายการ</h3><p>บันทึกผลสั้น ๆ เพื่อใช้เป็นสถิติการใช้งาน โดยไม่ใส่ข้อมูลผู้ป่วย</p></div></div><div class="notice warning"><b>ห้ามบันทึก</b><p>ชื่อผู้ป่วย HN Diagnosis Donor ID เลขถุงเลือด Barcode หรือ QR Code</p></div><div class="modal-actions"><button class="btn btn-primary" data-close-modal>เข้าใจแล้ว เริ่มใช้งาน</button></div>`);
   }
 
+  function isIosDevice() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
   function isAppInstalled() {
     return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+
+  function isInstallGuideDismissed() {
+    try { return localStorage.getItem(INSTALL_GUIDE_DISMISSED_KEY) === '1'; }
+    catch (_) { return false; }
+  }
+
+  function setInstallGuideDismissed(value) {
+    try {
+      if (value) localStorage.setItem(INSTALL_GUIDE_DISMISSED_KEY, '1');
+      else localStorage.removeItem(INSTALL_GUIDE_DISMISSED_KEY);
+    } catch (_) {}
+    if (value) $('#installPromptBox')?.remove();
+  }
+
+  function installGuideHtml(isIos) {
+    const checked = isInstallGuideDismissed() ? ' checked' : '';
+    const steps = isIos
+      ? `<div class="install-step-grid">
+          <div class="install-step-card"><span class="install-step-number">1</span><span class="install-step-icon">⬆️</span><b>กดปุ่มแชร์</b><small>เปิด BENT ด้วย Safari แล้วแตะปุ่มแชร์</small></div>
+          <div class="install-step-card"><span class="install-step-number">2</span><span class="install-step-icon">＋</span><b>เพิ่มไปยังหน้าจอโฮม</b><small>เลื่อนหาเมนู “เพิ่มไปยังหน้าจอโฮม”</small></div>
+          <div class="install-step-card"><span class="install-step-number">3</span><span class="install-step-icon">✓</span><b>กดเพิ่ม</b><small>ยืนยันแล้วเปิด BENT จากไอคอนบนหน้าจอ</small></div>
+        </div>
+        <div class="notice info"><b>บน iPhone/iPad</b><p>เว็บไซต์ไม่สามารถกดติดตั้งแทนผู้ใช้ได้ จึงต้องยืนยันผ่านเมนูแชร์ของ iOS หนึ่งครั้ง</p></div>`
+      : `<div class="install-step-grid">
+          <div class="install-step-card"><span class="install-step-number">1</span><span class="install-step-icon">⋮</span><b>เปิดเมนูเบราว์เซอร์</b><small>ใช้ Chrome หรือ Edge และเปิดเว็บไซต์ผ่าน HTTPS</small></div>
+          <div class="install-step-card"><span class="install-step-number">2</span><span class="install-step-icon">＋</span><b>เลือกติดตั้งแอป</b><small>เลือก “ติดตั้งแอป” หรือ “เพิ่มลงในหน้าจอหลัก”</small></div>
+          <div class="install-step-card"><span class="install-step-number">3</span><span class="install-step-icon">✓</span><b>กดยืนยัน</b><small>จากนั้นเปิด BENT จากไอคอนบนอุปกรณ์</small></div>
+        </div>`;
+    return `${steps}
+      <label class="install-dismiss-option"><input id="installGuideDismiss" type="checkbox"${checked}> <span>ไม่ต้องแสดงคำแนะนำนี้อีกบนอุปกรณ์นี้</span></label>
+      <div class="modal-actions"><button class="btn btn-primary" data-action="close-install-guide">เข้าใจแล้ว</button></div>`;
+  }
+
+  function openInstallInstructions() {
+    const isIos = isIosDevice();
+    openModal(
+      isIos ? 'ติดตั้ง BENT บน iPhone/iPad' : 'ติดตั้ง BENT บนหน้าจอหลัก',
+      isIos ? 'ทำตาม 3 ขั้นตอนผ่าน Safari' : 'ทำตาม 3 ขั้นตอนผ่านเบราว์เซอร์',
+      installGuideHtml(isIos)
+    );
+  }
+
+  function maybeShowIosInstallGuide(attempt = 0) {
+    if (!isIosDevice() || isAppInstalled() || isInstallGuideDismissed()) return;
+    try {
+      if (sessionStorage.getItem(INSTALL_GUIDE_SESSION_KEY) === '1') return;
+    } catch (_) {}
+    if (!$('#modalRoot')?.classList.contains('hidden')) {
+      if (attempt < 3) window.setTimeout(() => maybeShowIosInstallGuide(attempt + 1), 1500);
+      return;
+    }
+    try { sessionStorage.setItem(INSTALL_GUIDE_SESSION_KEY, '1'); } catch (_) {}
+    openInstallInstructions();
   }
 
   function updateInstallButton() {
@@ -3096,12 +3159,11 @@
   }
 
   async function openInstallHelp() {
-    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
     if (isAppInstalled()) {
       toast('ติดตั้ง BENT แล้ว', 'เปิดใช้งานจากไอคอนบนหน้าจอได้เลย', 'success');
       return;
     }
-    if (state.installPrompt) {
+    if (state.installPrompt && !isIosDevice()) {
       const prompt = state.installPrompt;
       state.installPrompt = null;
       prompt.prompt();
@@ -3109,7 +3171,7 @@
       updateInstallButton();
       return;
     }
-    openModal('ติดตั้ง BENT บนหน้าจอหลัก', 'อุปกรณ์นี้ยังไม่แสดงหน้าต่างติดตั้งอัตโนมัติ', isIos ? `<ol><li>เปิดเว็บไซต์ BENT ด้วย Safari</li><li>แตะปุ่มแชร์ ↑</li><li>เลือก “เพิ่มไปยังหน้าจอโฮม”</li><li>แตะ “เพิ่ม”</li></ol>` : `<ol><li>เปิดเว็บไซต์ BENT ด้วย Chrome หรือ Edge</li><li>แตะเมนูจุดสามจุด</li><li>เลือก “ติดตั้งแอป” หรือ “เพิ่มลงในหน้าจอหลัก”</li><li>กดยืนยัน</li></ol><p>หากยังไม่พบเมนู ให้เปิดผ่าน HTTPS โหลดหน้าใหม่ และใช้งานหน้าเว็บอย่างน้อยหนึ่งครั้ง</p>`);
+    openInstallInstructions();
   }
 
 
@@ -3158,6 +3220,9 @@
     $('#installTopBtn')?.addEventListener('click', openInstallHelp);
     $('#installAuthBtn')?.addEventListener('click', openInstallHelp);
     $('#modalRoot').addEventListener('click', e => { if (e.target.closest('[data-close-modal]')) closeModal(); handleActionClick(e); });
+    $('#modalRoot').addEventListener('change', e => {
+      if (e.target.matches('#installGuideDismiss')) setInstallGuideDismissed(e.target.checked);
+    });
     main.addEventListener('click', handleActionClick);
     window.addEventListener('online', updateConnectionState);
     window.addEventListener('offline', updateConnectionState);
@@ -3272,6 +3337,8 @@
     else if (action === 'cancel' && item) confirmCancel(item);
     else if (action === 'copy-phone') { await navigator.clipboard.writeText(event.target.closest('[data-phone]').dataset.phone); toast('คัดลอกเบอร์แล้ว','','success'); }
     else if (action === 'install-pwa') openInstallHelp();
+    else if (action === 'close-install-guide') { setInstallGuideDismissed(Boolean($('#installGuideDismiss')?.checked)); closeModal(); }
+    else if (action === 'dismiss-install-banner') { setInstallGuideDismissed(true); toast('ซ่อนคำแนะนำการติดตั้งแล้ว', 'ยังติดตั้งภายหลังได้จากปุ่ม “ติดตั้ง BENT”', 'success'); }
     else if (action === 'admin-review-request') {
       const requests = JSON.parse($('#adminContent').dataset.requests || '[]'); await openAccountRequest(requests.find(x => x.id === event.target.closest('[data-request]').dataset.request));
     }
@@ -3322,7 +3389,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.0').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.1').catch(() => {}));
     }
   }
 
