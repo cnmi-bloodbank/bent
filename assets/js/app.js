@@ -81,10 +81,19 @@
   }
 
   function imageMetaHtml(announcementId, image) {
+    const hasFastMeta = Boolean(image?.thumbnail_data_url);
+    const dateText = hasFastMeta
+      ? imageDateText({
+          photo_taken_at: image.photo_taken_at,
+          uploaded_at: image.uploaded_at,
+          photo_date_source: image.photo_date_source || 'uploaded_at'
+        }, image.uploaded_at)
+      : 'กำลังตรวจสอบ...';
+    const uploaderText = hasFastMeta ? (image.uploaded_by_name || 'ไม่พบข้อมูล') : 'กำลังโหลด...';
     return `<div class="image-meta" data-image-meta="${U.esc(announcementId)}">
-      <span data-meta-date>วันที่ถ่าย: กำลังตรวจสอบ...</span>
+      <span data-meta-date>วันที่ถ่าย: ${U.esc(dateText)}</span>
       <span data-meta-size>ขนาดไฟล์: ${U.esc(formatImageSize(image?.image_size))}</span>
-      <span data-meta-uploader>ผู้ที่อัปโหลด: กำลังโหลด...</span>
+      <span data-meta-uploader>ผู้ที่อัปโหลด: ${U.esc(uploaderText)}</span>
     </div>`;
   }
 
@@ -841,15 +850,30 @@
   }
 
   async function loadAnnouncements() {
-    const { data, error } = await state.supabase.from('bent_announcements').select(`
+    const selectBase = `
       *,
       component:bent_components(id,code,display_name,is_active),
       source:bent_blood_sources(id,code,display_name,requires_detail,is_active),
       hospital:bent_hospitals(id,name,province,is_active),
-      images:bent_announcement_images(id,image_file_name,image_size,image_mime_type,image_status,uploaded_by,uploaded_at)
-    `).order('created_at', { ascending: false }).limit(500);
-    if (error) throw error;
-    state.announcements = (data || []).map(withNormalizedImages);
+      images:bent_announcement_images(id,image_file_name,image_size,image_mime_type,image_status,uploaded_by,uploaded_at,thumbnail_data_url,thumbnail_mime_type,thumbnail_size,thumbnail_width,thumbnail_height,photo_taken_at,photo_date_source,uploaded_by_name)
+    `;
+    let result = await state.supabase.from('bent_announcements')
+      .select(selectBase)
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    // Compatibility fallback: the app still opens if the v1.7.4 SQL has not been run yet.
+    if (result.error && /thumbnail_data_url|thumbnail_mime_type|photo_taken_at|uploaded_by_name/i.test(String(result.error.message || ''))) {
+      result = await state.supabase.from('bent_announcements').select(`
+        *,
+        component:bent_components(id,code,display_name,is_active),
+        source:bent_blood_sources(id,code,display_name,requires_detail,is_active),
+        hospital:bent_hospitals(id,name,province,is_active),
+        images:bent_announcement_images(id,image_file_name,image_size,image_mime_type,image_status,uploaded_by,uploaded_at)
+      `).order('created_at', { ascending: false }).limit(500);
+    }
+    if (result.error) throw result.error;
+    state.announcements = (result.data || []).map(withNormalizedImages);
     state.imageCache.clear();
     state.imageRequests.clear();
   }
@@ -1152,8 +1176,9 @@
         ${a.blood_source_detail ? `<div class="info-box"><b>รายละเอียดแหล่งที่มา</b><p>${U.esc(a.blood_source_detail)}</p></div>` : ''}
         ${image ? `<div class="card-image-block">
           <button class="image-thumbnail-button" type="button" data-action="view-image" data-id="${a.id}" aria-label="เปิดรูปภาพประกอบเต็มจอ">
-            <span class="thumbnail-placeholder">กำลังโหลดรูป...</span>
-            <img class="announcement-thumbnail hidden" data-image-thumb="${a.id}" alt="รูปภาพประกอบประกาศ ${U.esc(componentName)}">
+            ${image.thumbnail_data_url
+              ? `<img class="announcement-thumbnail" src="${U.esc(image.thumbnail_data_url)}" data-loaded="true" alt="รูปภาพประกอบประกาศ ${U.esc(componentName)}">`
+              : `<span class="thumbnail-placeholder">กำลังโหลดรูป...</span><img class="announcement-thumbnail hidden" data-image-thumb="${a.id}" alt="รูปภาพประกอบประกาศ ${U.esc(componentName)}">`}
           </button>
           <div><b class="image-caption">รูปภาพประกอบ</b>${imageMetaHtml(a.id, image)}<small class="image-sop-note">แตะรูปเพื่อขยาย · ไม่ใช้แทนการตรวจสอบตาม SOP</small></div>
         </div>` : ''}
@@ -1513,10 +1538,13 @@
   }
 
   async function openImage(item) {
+    const image = normalizeImages(item.images).find(x => x.image_status === 'active');
     try {
-      openModal('กำลังเปิดรูปภาพ', 'รูปนี้ไม่ได้เปิดเป็นลิงก์สาธารณะ', '<div class="loading-block"><div class="spinner"></div></div>');
+      const fastPreview = image?.thumbnail_data_url
+        ? `<div class="image-loading-preview"><img src="${U.esc(image.thumbnail_data_url)}" alt="รูปตัวอย่าง"><div class="loading-block"><div class="spinner"></div><p>กำลังโหลดภาพคมชัด...</p></div></div>`
+        : '<div class="loading-block"><div class="spinner"></div></div>';
+      openModal('กำลังเปิดรูปภาพ', 'รูปนี้ไม่ได้เปิดเป็นลิงก์สาธารณะ', fastPreview);
       const data = await getImageData(item, 'full');
-      const image = normalizeImages(item.images).find(x => x.image_status === 'active');
       $('#modalTitle').textContent = 'รูปภาพประกอบ';
       $('#modalSubtitle').textContent = 'ใช้สองนิ้วถ่างเพื่อซูม ลากเพื่อเลื่อน หรือดับเบิลแตะเพื่อขยาย';
       $('#modalRoot .modal-card')?.classList.add('image-modal-card');
@@ -3450,7 +3478,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.3').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.4').catch(() => {}));
     }
   }
 

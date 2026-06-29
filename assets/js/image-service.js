@@ -5,6 +5,10 @@
   const TARGET_BYTES = 500 * 1024;
   const MAX_EDGE = 1600;
   const JPEG_QUALITY = 0.84;
+  const THUMBNAIL_EDGE = 180;
+  const THUMBNAIL_TARGET_BYTES = 24 * 1024;
+  const THUMBNAIL_MAX_BYTES = 48 * 1024;
+  const THUMBNAIL_QUALITY = 0.68;
   const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
 
   function readAsDataURL(fileOrBlob) {
@@ -41,6 +45,54 @@
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
     return canvas;
+  }
+
+  function drawSquareThumbnail(img, edge) {
+    const canvas = document.createElement('canvas');
+    canvas.width = edge;
+    canvas.height = edge;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) throw new Error('อุปกรณ์นี้ไม่รองรับการสร้างรูปตัวอย่าง');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, edge, edge);
+
+    const sourceWidth = img.naturalWidth || img.width;
+    const sourceHeight = img.naturalHeight || img.height;
+    const sourceEdge = Math.min(sourceWidth, sourceHeight);
+    const sourceX = Math.max(0, Math.round((sourceWidth - sourceEdge) / 2));
+    const sourceY = Math.max(0, Math.round((sourceHeight - sourceEdge) / 2));
+    ctx.drawImage(img, sourceX, sourceY, sourceEdge, sourceEdge, 0, 0, edge, edge);
+    return canvas;
+  }
+
+  async function createEmbeddedThumbnail(img) {
+    let edge = THUMBNAIL_EDGE;
+    let quality = THUMBNAIL_QUALITY;
+    let canvas = drawSquareThumbnail(img, edge);
+    let blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+
+    for (let attempt = 0; blob.size > THUMBNAIL_TARGET_BYTES && attempt < 4; attempt += 1) {
+      if (quality > 0.48) {
+        quality = Math.max(0.48, quality - 0.08);
+      } else {
+        edge = Math.max(120, Math.round(edge * 0.86));
+        canvas = drawSquareThumbnail(img, edge);
+      }
+      blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+    }
+
+    if (!blob.size || blob.size > THUMBNAIL_MAX_BYTES) {
+      throw new Error('สร้างรูปตัวอย่างขนาดเล็กไม่สำเร็จ');
+    }
+    const dataUrl = await readAsDataURL(blob);
+    return {
+      base64: String(dataUrl).split(',')[1],
+      dataUrl,
+      mimeType: 'image/jpeg',
+      size: blob.size,
+      width: edge,
+      height: edge
+    };
   }
 
   function parseExifDateString(value) {
@@ -158,7 +210,10 @@
     }
 
     if (blob.size > 1024 * 1024) throw new Error('รูปยังใหญ่เกิน 1 MB กรุณาครอบตัดรูปให้เล็กลง');
-    const base64Url = await readAsDataURL(blob);
+    const [base64Url, thumbnail] = await Promise.all([
+      readAsDataURL(blob),
+      createEmbeddedThumbnail(img)
+    ]);
     const base64 = String(base64Url).split(',')[1];
     return {
       blob,
@@ -171,7 +226,13 @@
       width,
       height,
       photoTakenAt: photoDate.value,
-      photoDateSource: photoDate.source
+      photoDateSource: photoDate.source,
+      thumbnailBase64: thumbnail.base64,
+      thumbnailDataUrl: thumbnail.dataUrl,
+      thumbnailMimeType: thumbnail.mimeType,
+      thumbnailSize: thumbnail.size,
+      thumbnailWidth: thumbnail.width,
+      thumbnailHeight: thumbnail.height
     };
   }
 
@@ -230,7 +291,12 @@
       file_name: compressed.fileName, mime_type: compressed.mimeType,
       size: compressed.size, base64_data: compressed.base64,
       photo_taken_at: compressed.photoTakenAt,
-      photo_date_source: compressed.photoDateSource
+      photo_date_source: compressed.photoDateSource,
+      thumbnail_base64_data: compressed.thumbnailBase64,
+      thumbnail_mime_type: compressed.thumbnailMimeType,
+      thumbnail_size: compressed.thumbnailSize,
+      thumbnail_width: compressed.thumbnailWidth,
+      thumbnail_height: compressed.thumbnailHeight
     }, onProgress);
   }
 
