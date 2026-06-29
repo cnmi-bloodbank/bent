@@ -29,6 +29,20 @@
     registrationOptionsLoadingProvince: ''
   };
 
+
+  function normalizeImages(images) {
+    if (Array.isArray(images)) return images.filter(Boolean);
+    if (!images) return [];
+    if (typeof images === 'object') return [images];
+    return [];
+  }
+
+  function withNormalizedImages(announcement) {
+    if (!announcement || typeof announcement !== 'object') return announcement;
+    announcement.images = normalizeImages(announcement.images);
+    return announcement;
+  }
+
   const screens = {
     setup: $('#setupScreen'), auth: $('#authScreen'), passwordSetup: $('#passwordSetupScreen'), pending: $('#pendingScreen'), app: $('#appShell')
   };
@@ -625,7 +639,7 @@
       images:bent_announcement_images(id,image_file_name,image_status,uploaded_at)
     `).order('created_at', { ascending: false }).limit(500);
     if (error) throw error;
-    state.announcements = data || [];
+    state.announcements = (data || []).map(withNormalizedImages);
   }
 
   function isAdmin() { return state.profile?.role === 'system_admin'; }
@@ -866,7 +880,7 @@
     let rows = activeAnnouncements();
     rows = rows.filter(a => {
       const searchable = [a.component?.display_name, a.other_component, a.hospital?.name, a.hospital?.province, a.source?.display_name, a.blood_source_detail, a.contact_name].join(' ').toLowerCase();
-      const hasImage = (a.images || []).some(i => i.image_status === 'active');
+      const hasImage = normalizeImages(a.images).some(i => i.image_status === 'active');
       const announcementAntigens = a.phenotype_negative || [];
       const province = a.hospital?.province || '';
       return (!f.text || searchable.includes(f.text))
@@ -904,7 +918,7 @@
     const antigen = a.phenotype_negative || [];
     const dateLabel = a.announcement_type === 'offer' ? 'หมดอายุ' : 'ต้องการภายใน';
     const dateValue = a.announcement_type === 'offer' ? a.expiry_date : a.needed_by;
-    const image = (a.images || []).find(i => i.image_status === 'active');
+    const image = normalizeImages(a.images).find(i => i.image_status === 'active');
     const manageable = canManage(a);
     const componentName = a.component?.code === 'OTHER' && a.other_component ? a.other_component : a.component?.display_name || '-';
     const adminDelete = Boolean(options.adminMode && isAdmin());
@@ -944,7 +958,7 @@
     const componentId = item?.component_id || '';
     const sourceId = item?.blood_source_id || activeMasters(state.masters.sources)[0]?.id || '';
     const antigens = item?.phenotype_negative || [];
-    const existingImage = (item?.images || []).find(i => i.image_status !== 'deleted');
+    const existingImage = normalizeImages(item?.images).find(i => i.image_status !== 'deleted');
     setPage(item ? 'แก้ไขประกาศ' : 'สร้างประกาศ', item ? 'แก้ไขได้เฉพาะรายการที่ยังเปิดอยู่' : 'กรอกเฉพาะข้อมูลที่ใช้ค้นหาและติดต่อ');
 
     main.innerHTML = `
@@ -1189,7 +1203,7 @@
   function openDetail(item) {
     const dateLabel = item.announcement_type === 'offer' ? 'วันหมดอายุ' : 'ต้องการภายใน';
     const date = item.announcement_type === 'offer' ? item.expiry_date : item.needed_by;
-    const image = (item.images || []).find(i => i.image_status === 'active');
+    const image = normalizeImages(item.images).find(i => i.image_status === 'active');
     openModal('รายละเอียดประกาศ', U.typeLabel[item.announcement_type], `
       <div class="page-stack">
         <div class="card-head"><div><span class="badge badge-${item.announcement_type}">${U.typeLabel[item.announcement_type]}</span><h2>${U.esc(item.component?.display_name || '-')} ${U.esc(item.abo)} Rh ${U.esc(U.rhLabel[item.rh])}</h2></div><span class="badge badge-${item.status}">${U.esc(U.statusLabel[item.status])}</span></div>
@@ -1252,7 +1266,7 @@
       if (error) throw error;
       closeModal();
       let imageDeleteFailed = false;
-      if ((item.images || []).length) {
+      if (normalizeImages(item.images).length) {
         try { await I.remove({ accessToken: state.session.access_token, announcementId: item.id }); }
         catch (_) { imageDeleteFailed = true; }
       }
@@ -1281,7 +1295,7 @@
         const { error } = await state.supabase.rpc('bent_cancel_announcement', { p_announcement_id: item.id, p_closure_note: $('#cancelNote').value.trim() || null });
         if (error) throw error;
         closeModal();
-        if ((item.images || []).length) { try { await I.remove({ accessToken: state.session.access_token, announcementId: item.id }); } catch (_) {} }
+        if (normalizeImages(item.images).length) { try { await I.remove({ accessToken: state.session.access_token, announcementId: item.id }); } catch (_) {} }
         await loadAnnouncements(); toast('ยกเลิกรายการแล้ว', '', 'success'); await navigate('mine');
       } catch (error) { toast('ยกเลิกไม่สำเร็จ', U.friendlyError(error), 'error'); }
       finally { setButtonBusy(btn, false); }
@@ -1294,7 +1308,7 @@
       const btn = $('#confirmRemoveImageBtn');
       try {
         setButtonBusy(btn,true,'กำลังลบ...');
-        const image = (item.images || []).find(x => x.image_status !== 'deleted');
+        const image = normalizeImages(item.images).find(x => x.image_status !== 'deleted');
         if (image) {
           const { error } = await state.supabase.from('bent_announcement_images').update({ image_status:'pending_delete', delete_error:null }).eq('id',image.id);
           if (error) throw error;
@@ -1329,7 +1343,7 @@
     button.addEventListener('click', async () => {
       try {
         setButtonBusy(button, true, 'กำลังลบ...');
-        const hasFile = (item.images || []).some(image => image.image_status !== 'deleted');
+        const hasFile = normalizeImages(item.images).some(image => image.image_status !== 'deleted');
         if (hasFile) {
           try {
             await I.remove({ accessToken: state.session.access_token, announcementId: item.id });
