@@ -95,6 +95,15 @@
     };
   }
 
+  async function createThumbnailFromDataUrl(dataUrl) {
+    const value = String(dataUrl || '').trim();
+    if (!/^data:image\/(jpeg|png|webp);base64,/i.test(value)) {
+      throw new Error('ข้อมูลรูปภาพไม่ถูกต้อง');
+    }
+    const img = await loadImage(value);
+    return createEmbeddedThumbnail(img);
+  }
+
   function parseExifDateString(value) {
     const match = String(value || '').trim().match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
     if (!match) return null;
@@ -319,9 +328,33 @@
     });
   }
 
+  async function saveThumbnail({ accessToken, announcementId, thumbnail }) {
+    if (!thumbnail?.base64 || !thumbnail?.dataUrl) throw new Error('ไม่พบรูปตัวอย่าง');
+    return callAppsScript({
+      action: 'save_thumbnail',
+      access_token: accessToken,
+      announcement_id: announcementId,
+      thumbnail_base64_data: thumbnail.base64,
+      thumbnail_mime_type: thumbnail.mimeType,
+      thumbnail_size: thumbnail.size,
+      thumbnail_width: thumbnail.width,
+      thumbnail_height: thumbnail.height
+    });
+  }
+
   async function remove({ accessToken, announcementId }) {
     return callAppsScript({ action: 'delete', access_token: accessToken, announcement_id: announcementId });
   }
 
-  window.BENT_IMAGE = { compressImage, upload, read, readThumbnails, remove, call: callAppsScript, allowedTypes: ALLOWED };
+  window.BENT_IMAGE = {
+    compressImage,
+    createThumbnailFromDataUrl,
+    upload,
+    read,
+    readThumbnails,
+    saveThumbnail,
+    remove,
+    call: callAppsScript,
+    allowedTypes: ALLOWED
+  };
 })();

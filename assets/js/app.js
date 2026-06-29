@@ -32,6 +32,9 @@
     initialized: false,
     setupToken: null,
     authRouteId: 0,
+    authInitializing: true,
+    authStorageKey: '',
+    resumeSessionInFlight: false,
     registrationHospitals: [],
     registrationOptionsProvince: '',
     registrationOptionsLoadingProvince: ''
@@ -82,14 +85,14 @@
 
   function imageMetaHtml(announcementId, image) {
     const hasFastMeta = Boolean(image?.thumbnail_data_url);
-    const dateText = hasFastMeta
+    const dateText = image?.uploaded_at
       ? imageDateText({
           photo_taken_at: image.photo_taken_at,
           uploaded_at: image.uploaded_at,
           photo_date_source: image.photo_date_source || 'uploaded_at'
         }, image.uploaded_at)
-      : 'กำลังตรวจสอบ...';
-    const uploaderText = hasFastMeta ? (image.uploaded_by_name || 'ไม่พบข้อมูล') : 'กำลังโหลด...';
+      : 'ไม่พบข้อมูล';
+    const uploaderText = hasFastMeta ? (image.uploaded_by_name || 'ไม่พบข้อมูล') : 'แสดงเมื่อเปิดรูป';
     return `<div class="image-meta" data-image-meta="${U.esc(announcementId)}">
       <span data-meta-date>วันที่ถ่าย: ${U.esc(dateText)}</span>
       <span data-meta-size>ขนาดไฟล์: ${U.esc(formatImageSize(image?.image_size))}</span>
@@ -125,25 +128,57 @@
     return request;
   }
 
+  function mergeThumbnailIntoItem(item, data) {
+    const image = normalizeImages(item?.images).find(x => x.image_status === 'active');
+    if (!image || !data?.data_url) return image;
+    image.thumbnail_data_url = data.data_url;
+    image.thumbnail_mime_type = data.mime_type || image.thumbnail_mime_type || 'image/jpeg';
+    image.thumbnail_size = data.payload_size || data.thumbnail_size || image.thumbnail_size || null;
+    image.photo_taken_at = data.photo_taken_at || image.photo_taken_at || null;
+    image.photo_date_source = data.photo_date_source || image.photo_date_source || null;
+    image.uploaded_by_name = data.uploaded_by_name || image.uploaded_by_name || null;
+    return image;
+  }
+
   function showThumbnail(img, data, item) {
     if (!img?.isConnected || !data?.data_url) return;
     const wrapper = img.closest('.image-thumbnail-button');
     const placeholder = $('.thumbnail-placeholder', wrapper);
+    const image = mergeThumbnailIntoItem(item, data);
     img.onload = () => {
       img.classList.remove('hidden');
       placeholder?.classList.add('hidden');
     };
+    img.onerror = () => showThumbnailError(img, 'แตะเพื่อเปิดรูป');
     img.src = data.data_url;
     img.dataset.loaded = 'true';
-    const image = normalizeImages(item.images).find(x => x.image_status === 'active');
     updateImageMeta(item.id, data, image);
   }
 
-  function showThumbnailError(img) {
+  function showThumbnailError(img, text = 'รูปเดิม · แตะเพื่อเปิด') {
     if (!img?.isConnected) return;
     const wrapper = img.closest('.image-thumbnail-button');
     const placeholder = $('.thumbnail-placeholder', wrapper);
-    if (placeholder) placeholder.textContent = 'แตะเพื่อเปิดรูป';
+    if (placeholder) placeholder.textContent = text;
+    img.dataset.loaded = 'true';
+  }
+
+  function thumbnailDataFromRow(row) {
+    if (!row?.thumbnail_data_url) return null;
+    return {
+      announcement_id: row.announcement_id,
+      variant: 'thumbnail',
+      is_thumbnail: true,
+      data_url: row.thumbnail_data_url,
+      mime_type: row.thumbnail_mime_type || 'image/jpeg',
+      payload_size: row.thumbnail_size || null,
+      image_size: row.image_size || null,
+      uploaded_at: row.uploaded_at || null,
+      uploaded_by_name: row.uploaded_by_name || 'ไม่พบข้อมูล',
+      photo_taken_at: row.photo_taken_at || row.uploaded_at || null,
+      photo_date_source: row.photo_date_source || 'uploaded_at',
+      cached_thumbnail: true
+    };
   }
 
   async function loadThumbnailBatch(nodes) {
@@ -168,24 +203,29 @@
     if (!pendingById.size) return;
 
     try {
-      const response = await I.readThumbnails({
-        accessToken: state.session?.access_token,
-        announcementIds: Array.from(pendingById.keys())
-      });
-      const rows = Array.isArray(response?.thumbnails) ? response.thumbnails : [];
-      const byId = new Map(rows.map(row => [row.announcement_id, row]));
+      const ids = Array.from(pendingById.keys());
+      const { data, error } = await state.supabase
+        .from('bent_announcement_images')
+        .select('announcement_id,image_size,uploaded_at,thumbnail_data_url,thumbnail_mime_type,thumbnail_size,photo_taken_at,photo_date_source,uploaded_by_name')
+        .in('announcement_id', ids)
+        .eq('image_status', 'active')
+        .not('thumbnail_data_url', 'is', null);
+      if (error) throw error;
 
+      const byId = new Map((data || []).map(row => [row.announcement_id, thumbnailDataFromRow(row)]));
       pendingById.forEach(({ item, nodes: imageNodes }, announcementId) => {
         const row = byId.get(announcementId);
-        if (!row || row.ok === false || !row.data_url) {
-          imageNodes.forEach(showThumbnailError);
+        if (!row?.data_url) {
+          imageNodes.forEach(img => showThumbnailError(img));
           return;
         }
         rememberImageData(announcementId, 'thumbnail', row);
         imageNodes.forEach(img => showThumbnail(img, row, item));
       });
-    } catch (_) {
-      pendingById.forEach(({ nodes: imageNodes }) => imageNodes.forEach(showThumbnailError));
+    } catch (error) {
+      const missingMigration = /thumbnail_data_url|column .* does not exist|schema cache/i.test(String(error?.message || error));
+      const text = missingMigration ? 'ต้องติดตั้ง SQL รูปเร็ว' : 'แตะเพื่อเปิดรูป';
+      pendingById.forEach(({ nodes: imageNodes }) => imageNodes.forEach(img => showThumbnailError(img, text)));
     } finally {
       pendingById.forEach(({ nodes: imageNodes }) => imageNodes.forEach(img => { delete img.dataset.loading; }));
     }
@@ -582,10 +622,22 @@
       return;
     }
 
+    const authStorage = window.BENT_AUTH_STORAGE?.createDurableStorage?.();
+    state.authStorageKey = window.BENT_AUTH_STORAGE?.storageKeyForUrl?.(window.BENT_CONFIG.SUPABASE_URL)
+      || 'bent-auth-token';
+
     state.supabase = window.supabase.createClient(
       window.BENT_CONFIG.SUPABASE_URL,
       window.BENT_CONFIG.SUPABASE_PUBLISHABLE_KEY,
-      { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
+      {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storage: authStorage || window.localStorage,
+          storageKey: state.authStorageKey
+        }
+      }
     );
 
     state.setupToken = new URLSearchParams(location.search).get('setup');
@@ -613,12 +665,14 @@
     // async onAuthStateChange callback can deadlock the client.
     state.supabase.auth.onAuthStateChange((_event, session) => {
       state.session = session;
-      scheduleRouteSession();
+      if (!state.authInitializing) scheduleRouteSession();
     });
 
     const { data, error } = await state.supabase.auth.getSession();
     if (error) toast('เปิด Session ไม่สำเร็จ', U.friendlyError(error), 'error');
-    state.session = data?.session || null;
+    state.session = data?.session || state.session || null;
+    state.authInitializing = false;
+    if (state.session?.user) window.BENT_AUTH_STORAGE?.requestPersistence?.().catch(() => {});
     await routeSession();
     state.initialized = true;
 
@@ -679,6 +733,41 @@
     const cleanUrl = new URL(location.href);
     cleanUrl.searchParams.delete('setup');
     location.href = cleanUrl.toString();
+  }
+
+  async function resumeStoredSession() {
+    if (!state.supabase || state.setupToken || state.resumeSessionInFlight || document.visibilityState === 'hidden') return;
+    state.resumeSessionInFlight = true;
+    try {
+      const { data, error } = await state.supabase.auth.getSession();
+      if (error) throw error;
+      const restored = data?.session || null;
+      const previousUserId = state.session?.user?.id || null;
+      const restoredUserId = restored?.user?.id || null;
+      const tokenChanged = restored?.access_token && restored.access_token !== state.session?.access_token;
+
+      if (restoredUserId) {
+        state.session = restored;
+        window.BENT_AUTH_STORAGE?.requestPersistence?.().catch(() => {});
+        if (!previousUserId || previousUserId !== restoredUserId) {
+          await routeSession();
+        } else if (tokenChanged) {
+          state.session = restored;
+        }
+      } else if (previousUserId) {
+        // Do not force the login page from a single resume read. Supabase may still
+        // be refreshing a rotated token; SIGNED_OUT will route correctly if invalid.
+        window.setTimeout(() => {
+          state.supabase?.auth.getSession().then(({ data: retryData }) => {
+            if (retryData?.session?.user) state.session = retryData.session;
+          }).catch(() => {});
+        }, 350);
+      }
+    } catch (_) {
+      // Keep the current screen. A temporary storage/read error must not log users out.
+    } finally {
+      state.resumeSessionInFlight = false;
+    }
   }
 
   function scheduleRouteSession() {
@@ -855,23 +944,12 @@
       component:bent_components(id,code,display_name,is_active),
       source:bent_blood_sources(id,code,display_name,requires_detail,is_active),
       hospital:bent_hospitals(id,name,province,is_active),
-      images:bent_announcement_images(id,image_file_name,image_size,image_mime_type,image_status,uploaded_by,uploaded_at,thumbnail_data_url,thumbnail_mime_type,thumbnail_size,thumbnail_width,thumbnail_height,photo_taken_at,photo_date_source,uploaded_by_name)
+      images:bent_announcement_images(id,image_file_name,image_size,image_mime_type,image_status,uploaded_by,uploaded_at)
     `;
-    let result = await state.supabase.from('bent_announcements')
+    const result = await state.supabase.from('bent_announcements')
       .select(selectBase)
       .order('created_at', { ascending: false })
       .limit(500);
-
-    // Compatibility fallback: the app still opens if the v1.7.4 SQL has not been run yet.
-    if (result.error && /thumbnail_data_url|thumbnail_mime_type|photo_taken_at|uploaded_by_name/i.test(String(result.error.message || ''))) {
-      result = await state.supabase.from('bent_announcements').select(`
-        *,
-        component:bent_components(id,code,display_name,is_active),
-        source:bent_blood_sources(id,code,display_name,requires_detail,is_active),
-        hospital:bent_hospitals(id,name,province,is_active),
-        images:bent_announcement_images(id,image_file_name,image_size,image_mime_type,image_status,uploaded_by,uploaded_at)
-      `).order('created_at', { ascending: false }).limit(500);
-    }
     if (result.error) throw result.error;
     state.announcements = (result.data || []).map(withNormalizedImages);
     state.imageCache.clear();
@@ -1178,7 +1256,7 @@
           <button class="image-thumbnail-button" type="button" data-action="view-image" data-id="${a.id}" aria-label="เปิดรูปภาพประกอบเต็มจอ">
             ${image.thumbnail_data_url
               ? `<img class="announcement-thumbnail" src="${U.esc(image.thumbnail_data_url)}" data-loaded="true" alt="รูปภาพประกอบประกาศ ${U.esc(componentName)}">`
-              : `<span class="thumbnail-placeholder">กำลังโหลดรูป...</span><img class="announcement-thumbnail hidden" data-image-thumb="${a.id}" alt="รูปภาพประกอบประกาศ ${U.esc(componentName)}">`}
+              : `<span class="thumbnail-placeholder">กำลังโหลดรูปเล็ก...</span><img class="announcement-thumbnail hidden" data-image-thumb="${a.id}" alt="รูปภาพประกอบประกาศ ${U.esc(componentName)}">`}
           </button>
           <div><b class="image-caption">รูปภาพประกอบ</b>${imageMetaHtml(a.id, image)}<small class="image-sop-note">แตะรูปเพื่อขยาย · ไม่ใช้แทนการตรวจสอบตาม SOP</small></div>
         </div>` : ''}
@@ -1537,6 +1615,38 @@
     $('#imageZoomReset')?.addEventListener('click', reset);
   }
 
+  async function repairThumbnailAfterOpen(item, fullData) {
+    const image = normalizeImages(item?.images).find(x => x.image_status === 'active');
+    if (!image || image.thumbnail_data_url || !canManage(item) || !fullData?.data_url) return;
+    try {
+      const thumbnail = await I.createThumbnailFromDataUrl(fullData.data_url);
+      await I.saveThumbnail({
+        accessToken: state.session?.access_token,
+        announcementId: item.id,
+        thumbnail
+      });
+      const data = {
+        announcement_id: item.id,
+        variant: 'thumbnail',
+        is_thumbnail: true,
+        data_url: thumbnail.dataUrl,
+        mime_type: thumbnail.mimeType,
+        payload_size: thumbnail.size,
+        image_size: image.image_size || fullData.image_size || null,
+        uploaded_at: image.uploaded_at || fullData.uploaded_at || null,
+        uploaded_by_name: fullData.uploaded_by_name || image.uploaded_by_name || 'ไม่พบข้อมูล',
+        photo_taken_at: fullData.photo_taken_at || image.uploaded_at || null,
+        photo_date_source: fullData.photo_date_source || 'uploaded_at',
+        cached_thumbnail: true
+      };
+      rememberImageData(item.id, 'thumbnail', data);
+      mergeThumbnailIntoItem(item, data);
+      $$(`img[data-image-thumb="${item.id}"]`).forEach(img => showThumbnail(img, data, item));
+    } catch (error) {
+      console.warn('Could not repair old thumbnail', error);
+    }
+  }
+
   async function openImage(item) {
     const image = normalizeImages(item.images).find(x => x.image_status === 'active');
     try {
@@ -1545,6 +1655,7 @@
         : '<div class="loading-block"><div class="spinner"></div></div>';
       openModal('กำลังเปิดรูปภาพ', 'รูปนี้ไม่ได้เปิดเป็นลิงก์สาธารณะ', fastPreview);
       const data = await getImageData(item, 'full');
+      repairThumbnailAfterOpen(item, data);
       $('#modalTitle').textContent = 'รูปภาพประกอบ';
       $('#modalSubtitle').textContent = 'ใช้สองนิ้วถ่างเพื่อซูม ลากเพื่อเลื่อน หรือดับเบิลแตะเพื่อขยาย';
       $('#modalRoot .modal-card')?.classList.add('image-modal-card');
@@ -3315,6 +3426,10 @@
     main.addEventListener('click', handleActionClick);
     window.addEventListener('online', updateConnectionState);
     window.addEventListener('offline', updateConnectionState);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') resumeStoredSession();
+    });
+    window.addEventListener('pageshow', () => resumeStoredSession());
     window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); state.installPrompt = event; updateInstallButton(); });
     window.addEventListener('appinstalled', () => { state.installPrompt = null; updateInstallButton(); toast('ติดตั้ง BENT สำเร็จ', 'เปิดใช้งานจากไอคอนบนหน้าจอได้เลย', 'success'); });
     updateInstallButton();
@@ -3328,6 +3443,7 @@
       const { data, error } = await state.supabase.auth.signInWithPassword({ email: $('#loginEmail').value.trim(), password: $('#loginPassword').value });
       if (error) throw error;
       state.session = data?.session || null;
+      window.BENT_AUTH_STORAGE?.requestPersistence?.().catch(() => {});
       await routeSession();
     } catch (error) {
       showScreen('auth');
@@ -3478,7 +3594,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.4').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.6').catch(() => {}));
     }
   }
 
