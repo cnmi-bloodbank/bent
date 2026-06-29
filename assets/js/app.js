@@ -897,8 +897,6 @@
   function renderDashboard() {
     setPage('ภาพรวม', `โรงพยาบาลของคุณ: ${state.hospital?.name || '-'}`);
     const active = activeAnnouncements();
-    const todayKey = bangkokDateKey();
-    const todayRows = active.filter(a => bangkokDateKey(a.created_at) === todayKey);
     const offer = active.filter(a => a.announcement_type === 'offer').length;
     const request = active.filter(a => a.announcement_type === 'request').length;
     const mine = state.announcements.filter(a => a.hospital_id === state.profile.hospital_id && ['open','coordinating'].includes(a.status)).length;
@@ -924,8 +922,8 @@
           </div>
         </section>
         <section class="panel">
-          <div class="panel-header"><div><h2>ประกาศวันนี้</h2><p>แสดงเฉพาะประกาศที่สร้างวันนี้และยังเปิดรับการติดต่อ</p></div><button class="btn btn-soft" data-view="browse">ค้นหาประกาศทั้งหมด</button></div>
-          <div class="panel-body"><div class="announcement-grid">${todayRows.slice(0, 4).map(renderAnnouncementCard).join('') || emptyState('วันนี้ยังไม่มีประกาศใหม่','ประกาศวันก่อนยังค้นหาได้จากเมนู “ค้นหาประกาศ”')}</div></div>
+          <div class="panel-header"><div><h2>ประกาศที่ยังเปิดอยู่</h2><p>แสดงทุกประกาศที่ยังเปิดรับการติดต่อหรือกำลังประสานงาน จนกว่าจะปิด ยกเลิก หรือหมดอายุ</p></div><button class="btn btn-soft" data-view="browse">ค้นหาแบบละเอียด</button></div>
+          <div class="panel-body"><div class="announcement-grid">${active.map(renderAnnouncementCard).join('') || emptyState('ยังไม่มีประกาศที่เปิดอยู่','เมื่อมีประกาศใหม่หรือรายการที่ยังอยู่ระหว่างประสานงาน ระบบจะแสดงที่หน้านี้')}</div></div>
         </section>
         <div class="notice warning"><b>ข้อควรจำ</b><p>BENT ใช้ช่วยค้นหาและติดต่อเท่านั้น โรงพยาบาลผู้รับต้องตรวจสอบผลิตภัณฑ์ เอกสาร คุณภาพ การขนส่ง และดำเนินการตาม SOP ก่อนรับหรือจ่ายผลิตภัณฑ์โลหิต</p></div>
       </div>`;
@@ -1991,7 +1989,7 @@
         <section class="guide-grid">
           <article class="guide-card"><h3>1. สมัครและเข้าสู่ระบบ</h3><ol><li>เปิดแท็บ “สมัครใช้งาน” และอ่านขั้นตอนที่อยู่เหนือแบบฟอร์ม</li><li>เลือกจังหวัดก่อน แล้วค้นหาโรงพยาบาลจากรายชื่อ</li><li>หากไม่พบ ให้กด “ไม่พบโรงพยาบาลของฉัน” และกรอกชื่อทางการพร้อมเบอร์โทรโรงพยาบาล</li><li>กรอกชื่อ เบอร์โทร อีเมล และส่งคำขอ</li><li>รอผู้ดูแลตรวจสอบ จากนั้นเปิดอีเมลและตั้งรหัสผ่านของตนเอง</li></ol></article>
           <article class="guide-card"><h3>2. ค้นหาประกาศ</h3><ol><li>เปิดเมนู “ค้นหาประกาศ”</li><li>กรอกตัวกรองที่ต้องการ โดยเลือกแอนติเจนผลลบได้หลายตัว</li><li>กดปุ่ม “ค้นหา” ระบบจึงจะแสดงรายการ</li><li>กด “ดูรายละเอียดและติดต่อ”</li><li>โทรหรือคัดลอกเบอร์ แล้วประสานงานตาม SOP ของโรงพยาบาล</li></ol></article>
-          <article class="guide-card"><h3>3. หน้า ภาพรวม</h3><ol><li>ตัวเลขสรุปด้านบนแสดงรายการที่กำลังเปิดทั้งหมด</li><li>ส่วน “ประกาศวันนี้” แสดงเฉพาะรายการที่สร้างในวันนี้</li><li>ประกาศวันก่อนค้นหาได้จากเมนู “ค้นหาประกาศ”</li></ol></article>
+          <article class="guide-card"><h3>3. หน้า ภาพรวม</h3><ol><li>ตัวเลขสรุปด้านบนแสดงรายการที่กำลังเปิดทั้งหมด</li><li>ส่วน “ประกาศที่ยังเปิดอยู่” แสดงทุกรายการที่เปิดรับการติดต่อหรือกำลังประสานงาน ไม่จำกัดเฉพาะวันนี้</li><li>รายการจะหายจากส่วนนี้เมื่อปิด ยกเลิก หรือเปลี่ยนเป็นสถานะหมดอายุ</li></ol></article>
           <article class="guide-card"><h3>4. ประกาศว่ามีเลือด</h3><ol><li>เลือก “มีเลือดพร้อมให้ติดต่อ”</li><li>ระบุผลิตภัณฑ์ หมู่เลือด จำนวน วันหมดอายุ และแหล่งที่มา</li><li>เลือกแอนติเจนเฉพาะตัวที่ต้องการผลลบ</li><li>แนบรูปได้ แต่ไม่บังคับ</li><li>ตรวจสรุปแล้วกด “สร้างประกาศ”</li></ol></article>
           <article class="guide-card"><h3>5. ประกาศว่าต้องการเลือด</h3><ol><li>เลือก “ต้องการเลือด”</li><li>ระบุผลิตภัณฑ์ หมู่เลือด จำนวน วันที่ต้องการ และความเร่งด่วน</li><li>เลือกแอนติเจนที่ต้องการผลลบตามเงื่อนไข</li><li>กรอกผู้ติดต่อ แล้วสร้างประกาศ</li></ol></article>
           <article class="guide-card"><h3>6. ระหว่างประสานงานและปิดรายการ</h3><ol><li>เมื่อเริ่มคุยกับโรงพยาบาลอื่น กด “กำลังประสานงาน”</li><li>แก้จำนวนคงเหลือ/ยังต้องการได้</li><li>เมื่อจบเรื่อง กด “ปิดรายการ”</li><li>เลือกเหตุผล ผลการประสานงาน และจำนวนที่สำเร็จ</li><li>รูปจะถูกซ่อนทันที แล้วระบบจึงลบจาก Google Drive</li></ol></article>
@@ -3389,7 +3387,7 @@
 
   function registerPwa() {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.1').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=1.7.2').catch(() => {}));
     }
   }
 
